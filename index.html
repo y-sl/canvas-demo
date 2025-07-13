@@ -1,0 +1,3387 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>可视化页面搭建原型</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.0/fabric.min.js"></script>
+    <style>
+        /* 自定义样式 */
+        .phone-preview {
+            width: 375px;
+            height: 667px;
+            background: #000;
+            border-radius: 25px;
+            padding: 10px;
+            box-shadow: 0 0 30px rgba(0,0,0,0.3);
+        }
+        
+        .phone-screen {
+            width: 100%;
+            height: 100%;
+            background: #fff;
+            border-radius: 15px;
+            overflow-y: auto;
+            overflow-x: hidden;
+            position: relative;
+        }
+        
+        .canvas-container {
+            width: 100%;
+            height: 600px;
+            border: 2px dashed #e5e7eb;
+            background: #f9fafb;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .property-panel {
+            height: 600px;
+            overflow-y: auto;
+            background: #f8fafc;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+        }
+        
+        .module-preview {
+            position: absolute;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        .module-preview:hover {
+            transform: scale(1.02);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        
+        .form-group {
+            margin-bottom: 16px;
+        }
+        
+        .form-label {
+            display: block;
+            margin-bottom: 4px;
+            font-weight: 500;
+            color: #374151;
+        }
+        
+        .form-input {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+        
+        .form-select {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            font-size: 14px;
+            background: white;
+        }
+        
+        .btn-primary {
+            background: #3b82f6;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: background 0.2s ease;
+        }
+        
+        .btn-primary:hover {
+            background: #2563eb;
+        }
+        
+        .btn-secondary {
+            background: #6b7280;
+            color: white;
+            padding: 8px 16px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: background 0.2s ease;
+        }
+        
+        .btn-secondary:hover {
+            background: #4b5563;
+        }
+        
+        .btn-danger {
+            background: #ef4444;
+            color: white;
+            padding: 8px 16px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: background 0.2s ease;
+        }
+        
+        .btn-danger:hover {
+            background: #dc2626;
+        }
+        
+        .alert {
+            padding: 12px;
+            border-radius: 6px;
+            margin-bottom: 16px;
+            font-size: 14px;
+        }
+        
+        .alert-info {
+            background: #dbeafe;
+            color: #1e40af;
+            border: 1px solid #93c5fd;
+        }
+        
+        .alert-success {
+            background: #dcfce7;
+            color: #166534;
+            border: 1px solid #86efac;
+        }
+        
+        .alert-error {
+            background: #fef2f2;
+            color: #dc2626;
+            border: 1px solid #fca5a5;
+        }
+        
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #3b82f6;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <div class="container mx-auto px-4 py-6">
+        <!-- 标题栏 -->
+        <div class="mb-6">
+            <h1 class="text-3xl font-bold text-gray-900 mb-2">可视化页面搭建原型</h1>
+            <p class="text-gray-600">使用拖拽方式创建活动页面，支持多种模块类型和实时预览</p>
+        </div>
+        
+        <!-- 三栏布局 -->
+        <div class="grid grid-cols-12 gap-6">
+            <!-- 左栏：管理后台/画布区 -->
+            <div class="col-span-4">
+                <div class="bg-white rounded-lg shadow-sm p-6">
+                    <div class="flex items-center justify-between mb-4">
+                        <h2 class="text-lg font-semibold text-gray-900">管理后台</h2>
+                        <div class="flex gap-2">
+                            <input type="file" id="backgroundUpload" accept="image/*" class="hidden">
+                            <button id="uploadBtn" class="btn-primary">上传背景图</button>
+                            <button id="saveConfigBtn" class="btn-secondary">保存配置</button>
+                        </div>
+                    </div>
+                    
+                    <!-- 画布容器 -->
+                    <div class="canvas-container">
+                        <canvas id="fabricCanvas"></canvas>
+                        <div id="canvasOverlay" class="absolute inset-0 pointer-events-none">
+                            <div id="dragHint" class="hidden absolute bg-blue-500 bg-opacity-20 border-2 border-blue-500 border-dashed"></div>
+                            <div id="canvasLoading" class="hidden absolute inset-0 bg-white bg-opacity-80 flex items-center justify-center">
+                                <div class="text-center">
+                                    <div class="animate-spin w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full mx-auto mb-2"></div>
+                                    <div class="text-sm text-gray-600">正在设置背景图片...</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 操作提示 -->
+                    <div class="mt-4 text-sm text-gray-600">
+                        <p>💡 操作提示：</p>
+                        <ul class="list-disc list-inside mt-2 space-y-1">
+                            <li>先上传背景图片</li>
+                            <li>按住鼠标拖拽创建模块</li>
+                            <li>点击模块进行选择和编辑</li>
+                            <li>拖拽模块边缘调整大小</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 中栏：属性配置面板 -->
+            <div class="col-span-4">
+                <div class="bg-white rounded-lg shadow-sm p-6">
+                    <h2 class="text-lg font-semibold text-gray-900 mb-4">属性配置</h2>
+                    
+                    <!-- 属性面板容器 -->
+                    <div class="property-panel">
+                        <div id="propertyContent">
+                            <div class="alert alert-info">
+                                <p>请在左侧画布中拖拽创建或选择一个模块</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 右栏：H5实时预览 -->
+            <div class="col-span-4">
+                <div class="bg-white rounded-lg shadow-sm p-6">
+                    <h2 class="text-lg font-semibold text-gray-900 mb-4">实时预览</h2>
+                    
+                    <!-- 手机预览容器 -->
+                    <div class="flex justify-center">
+                        <div class="phone-preview">
+                            <div class="phone-screen">
+                                <div id="previewContainer" class="w-full h-full relative overflow-hidden">
+                                    <div id="previewBackground" class="w-full h-full absolute inset-0 bg-gray-100 flex items-center justify-center text-gray-500">
+                                        <p>请先上传背景图片</p>
+                                    </div>
+                                    <div id="previewModules" class="absolute inset-0"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 预览控制 -->
+                    <div class="mt-4 flex justify-center gap-2">
+                        <button id="previewRefreshBtn" class="btn-secondary">刷新预览</button>
+                        <button id="previewResetBtn" class="btn-secondary">重置视图</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 配置导出弹窗 -->
+        <div id="configModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
+            <div class="bg-white rounded-lg p-6 max-w-2xl w-full mx-4 max-h-96 overflow-y-auto">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-lg font-semibold">导出配置</h3>
+                    <button id="closeModalBtn" class="text-gray-500 hover:text-gray-700">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                        </svg>
+                    </button>
+                </div>
+                <div class="mb-4">
+                    <label class="form-label">配置JSON：</label>
+                    <textarea id="configOutput" class="form-input h-64 font-mono text-sm" readonly></textarea>
+                </div>
+                <div class="flex justify-end gap-2">
+                    <button id="copyConfigBtn" class="btn-primary">复制配置</button>
+                    <button id="downloadConfigBtn" class="btn-secondary">下载配置</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // 应用程序将在这里初始化
+        console.log('可视化页面搭建原型已加载');
+        console.log('Fabric.js版本:', fabric.version);
+        
+        // ==================== 核心模块类系统 ====================
+        
+        /**
+         * 基础模块类 - 所有模块类型的基类
+         */
+        class BaseModule {
+            constructor(id, type, fabricObject, properties = {}) {
+                this.id = id || this.generateId();
+                this.type = type;
+                this.fabricObject = fabricObject;
+                this.properties = { ...this.getDefaultProperties(), ...properties };
+                this.created = new Date().toISOString();
+                
+                // 绑定Fabric对象和模块实例
+                if (this.fabricObject) {
+                    this.fabricObject.moduleInstance = this;
+                    this.fabricObject.selectable = true;
+                    this.fabricObject.hasControls = true;
+                    this.fabricObject.hasBorders = true;
+                }
+            }
+            
+            /**
+             * 生成唯一ID
+             */
+            generateId() {
+                return 'module_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+            }
+            
+            /**
+             * 获取默认属性（子类需要重写）
+             */
+            getDefaultProperties() {
+                return {};
+            }
+            
+            /**
+             * 序列化模块数据为JSON格式
+             */
+            serialize(backgroundWidth, backgroundHeight) {
+                const rect = this.getPercentageRect(backgroundWidth, backgroundHeight);
+                return {
+                    id: this.id,
+                    type: this.type,
+                    rect: rect,
+                    properties: { ...this.properties },
+                    created: this.created
+                };
+            }
+            
+            /**
+             * 从JSON数据反序列化模块
+             */
+            static deserialize(data, canvas) {
+                // 这个方法在子类中实现
+                throw new Error('deserialize method must be implemented in subclass');
+            }
+            
+            /**
+             * 更新模块属性
+             */
+            updateProperties(newProperties) {
+                this.properties = { ...this.properties, ...newProperties };
+                this.applyPropertiesToFabric();
+                this.onPropertiesChanged();
+            }
+            
+            /**
+             * 将属性应用到Fabric对象（子类需要重写）
+             */
+            applyPropertiesToFabric() {
+                // 子类实现具体的属性应用逻辑
+            }
+            
+            /**
+             * 属性变更回调
+             */
+            onPropertiesChanged() {
+                // 触发预览更新
+                if (window.previewManager) {
+                    window.previewManager.updateModule(this);
+                }
+            }
+            
+            /**
+             * 在预览容器中渲染模块
+             */
+            renderPreview(container, containerWidth, containerHeight) {
+                // 子类实现具体的预览渲染逻辑
+                throw new Error('renderPreview method must be implemented in subclass');
+            }
+            
+            /**
+             * 获取相对于背景图的百分比位置和尺寸
+             */
+            getPercentageRect(backgroundWidth, backgroundHeight) {
+                if (!this.fabricObject || !backgroundWidth || !backgroundHeight) {
+                    return { left: '0%', top: '0%', width: '100%', height: '10%' };
+                }
+                
+                const obj = this.fabricObject;
+                const left = this.toPercentage(obj.left, backgroundWidth);
+                const top = this.toPercentage(obj.top, backgroundHeight);
+                const width = this.toPercentage(obj.width * obj.scaleX, backgroundWidth);
+                const height = this.toPercentage(obj.height * obj.scaleY, backgroundHeight);
+                
+                return { left, top, width, height };
+            }
+            
+            /**
+             * 转换为百分比
+             */
+            toPercentage(value, dimension) {
+                return ((value / dimension) * 100).toFixed(2) + '%';
+            }
+            
+            /**
+             * 从百分比转换为像素值
+             */
+            fromPercentage(percentage, dimension) {
+                return (parseFloat(percentage) / 100) * dimension;
+            }
+            
+            /**
+             * 获取模块的显示名称
+             */
+            getDisplayName() {
+                const typeNames = {
+                    'TEXT': '文本',
+                    'BUTTON': '按钮',
+                    'VIDEO': '视频',
+                    'GIF': '动态图'
+                };
+                return typeNames[this.type] || this.type;
+            }
+            
+            /**
+             * 获取模块的图标
+             */
+            getIcon() {
+                const icons = {
+                    'TEXT': '📝',
+                    'BUTTON': '🔘',
+                    'VIDEO': '🎬',
+                    'GIF': '🎞️'
+                };
+                return icons[this.type] || '📄';
+            }
+            
+            /**
+             * 验证模块属性
+             */
+            validateProperties() {
+                // 子类可以重写此方法进行特定验证
+                return { valid: true, errors: [] };
+            }
+            
+            /**
+             * 清理模块资源
+             */
+            destroy() {
+                if (this.fabricObject) {
+                    this.fabricObject.moduleInstance = null;
+                }
+                this.fabricObject = null;
+                this.properties = null;
+            }
+            
+            /**
+             * 克隆模块
+             */
+            clone() {
+                const clonedData = this.serialize(1000, 1000); // 使用临时尺寸
+                clonedData.id = this.generateId();
+                return this.constructor.deserialize(clonedData, null);
+            }
+        }
+        
+        // ==================== 工具函数 ====================
+        
+        /**
+         * 坐标转换工具函数
+         */
+        const CoordinateUtils = {
+            /**
+             * 转换为百分比
+             */
+            toPercentage(value, dimension) {
+                return ((value / dimension) * 100).toFixed(2) + '%';
+            },
+            
+            /**
+             * 从百分比转换为像素值
+             */
+            fromPercentage(percentage, dimension) {
+                return (parseFloat(percentage) / 100) * dimension;
+            },
+            
+            /**
+             * 计算画布缩放比例
+             */
+            calculateCanvasScale(containerWidth, imageWidth) {
+                return Math.min(containerWidth / imageWidth, 1);
+            },
+            
+            /**
+             * 限制值在指定范围内
+             */
+            clamp(value, min, max) {
+                return Math.min(Math.max(value, min), max);
+            }
+        };
+        
+        /**
+         * 文件处理工具函数
+         */
+        const FileUtils = {
+            /**
+             * 将文件转换为base64
+             */
+            async fileToBase64(file) {
+                return new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onload = () => resolve(reader.result);
+                    reader.onerror = reject;
+                    reader.readAsDataURL(file);
+                });
+            },
+            
+            /**
+             * 验证文件类型
+             */
+            validateImageFile(file) {
+                const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+                return allowedTypes.includes(file.type);
+            },
+            
+            /**
+             * 验证文件大小
+             */
+            validateFileSize(file, maxSizeMB = 10) {
+                return file.size <= maxSizeMB * 1024 * 1024;
+            }
+        };
+        
+        /**
+         * DOM操作工具函数
+         */
+        const DOMUtils = {
+            /**
+             * 创建DOM元素
+             */
+            createElement(tag, className, textContent) {
+                const element = document.createElement(tag);
+                if (className) element.className = className;
+                if (textContent) element.textContent = textContent;
+                return element;
+            },
+            
+            /**
+             * 清空容器
+             */
+            clearContainer(container) {
+                while (container.firstChild) {
+                    container.removeChild(container.firstChild);
+                }
+            },
+            
+            /**
+             * 显示/隐藏元素
+             */
+            toggleVisibility(element, show) {
+                if (show) {
+                    element.classList.remove('hidden');
+                    element.classList.add('flex');
+                } else {
+                    element.classList.add('hidden');
+                    element.classList.remove('flex');
+                }
+            }
+        };
+        
+        console.log('BaseModule基类已加载');
+        
+        // ==================== 具体模块类实现 ====================
+        
+        /**
+         * 文本模块类
+         */
+        class TextModule extends BaseModule {
+            constructor(id, fabricObject, properties = {}) {
+                super(id, 'TEXT', fabricObject, properties);
+            }
+            
+            /**
+             * 获取默认属性
+             */
+            getDefaultProperties() {
+                return {
+                    textContent: '请输入文本内容',
+                    fontSize: 16,
+                    color: '#000000',
+                    fontWeight: 'normal',
+                    textAlign: 'left',
+                    fontFamily: 'Arial, sans-serif',
+                    lineHeight: 1.4,
+                    letterSpacing: 0
+                };
+            }
+            
+            /**
+             * 将属性应用到Fabric对象
+             */
+            applyPropertiesToFabric() {
+                if (!this.fabricObject) return;
+                
+                const props = this.properties;
+                
+                // 更新文本内容
+                this.fabricObject.set('text', props.textContent);
+                
+                // 更新字体样式
+                this.fabricObject.set({
+                    fontSize: props.fontSize,
+                    fill: props.color,
+                    fontWeight: props.fontWeight,
+                    textAlign: props.textAlign,
+                    fontFamily: props.fontFamily,
+                    lineHeight: props.lineHeight,
+                    charSpacing: props.letterSpacing * 1000 // Fabric.js使用1000倍的字符间距
+                });
+                
+                // 刷新画布
+                if (this.fabricObject.canvas) {
+                    this.fabricObject.canvas.renderAll();
+                }
+            }
+            
+            /**
+             * 创建Fabric文本对象
+             */
+            static createFabricObject(text, options = {}) {
+                const defaultOptions = {
+                    left: options.left || 50,
+                    top: options.top || 50,
+                    fontSize: options.fontSize || 16,
+                    fill: options.color || '#000000',
+                    fontWeight: options.fontWeight || 'normal',
+                    textAlign: options.textAlign || 'left',
+                    fontFamily: options.fontFamily || 'Arial, sans-serif',
+                    lineHeight: options.lineHeight || 1.4,
+                    charSpacing: (options.letterSpacing || 0) * 1000
+                };
+                
+                return new fabric.Text(text, defaultOptions);
+            }
+            
+            /**
+             * 在预览容器中渲染模块
+             */
+            renderPreview(container, containerWidth, containerHeight) {
+                const rect = this.getPercentageRect(containerWidth, containerHeight);
+                const props = this.properties;
+                
+                // 创建文本元素
+                const textElement = DOMUtils.createElement('div', 'module-preview');
+                textElement.style.cssText = `
+                    position: absolute;
+                    left: ${rect.left};
+                    top: ${rect.top};
+                    width: ${rect.width};
+                    height: ${rect.height};
+                    font-size: ${props.fontSize}px;
+                    color: ${props.color};
+                    font-weight: ${props.fontWeight};
+                    text-align: ${props.textAlign};
+                    font-family: ${props.fontFamily};
+                    line-height: ${props.lineHeight};
+                    letter-spacing: ${props.letterSpacing}px;
+                    overflow: hidden;
+                    word-wrap: break-word;
+                    display: flex;
+                    align-items: center;
+                    padding: 4px;
+                    box-sizing: border-box;
+                    z-index: 10;
+                `;
+                
+                textElement.textContent = props.textContent;
+                textElement.dataset.moduleId = this.id;
+                textElement.dataset.moduleType = this.type;
+                
+                return textElement;
+            }
+            
+            /**
+             * 从JSON数据反序列化文本模块
+             */
+            static deserialize(data, canvas) {
+                const fabricObject = TextModule.createFabricObject(
+                    data.properties.textContent,
+                    {
+                        left: CoordinateUtils.fromPercentage(data.rect.left, canvas ? canvas.width : 375),
+                        top: CoordinateUtils.fromPercentage(data.rect.top, canvas ? canvas.height : 667),
+                        fontSize: data.properties.fontSize,
+                        color: data.properties.color,
+                        fontWeight: data.properties.fontWeight,
+                        textAlign: data.properties.textAlign,
+                        fontFamily: data.properties.fontFamily,
+                        lineHeight: data.properties.lineHeight,
+                        letterSpacing: data.properties.letterSpacing
+                    }
+                );
+                
+                // 设置尺寸
+                const width = CoordinateUtils.fromPercentage(data.rect.width, canvas ? canvas.width : 375);
+                const height = CoordinateUtils.fromPercentage(data.rect.height, canvas ? canvas.height : 667);
+                fabricObject.set({ width, height });
+                
+                const module = new TextModule(data.id, fabricObject, data.properties);
+                
+                if (canvas) {
+                    canvas.add(fabricObject);
+                }
+                
+                return module;
+            }
+            
+            /**
+             * 验证文本模块属性
+             */
+            validateProperties() {
+                const errors = [];
+                const props = this.properties;
+                
+                if (!props.textContent || props.textContent.trim() === '') {
+                    errors.push('文本内容不能为空');
+                }
+                
+                if (props.fontSize < 8 || props.fontSize > 72) {
+                    errors.push('字体大小必须在8-72px之间');
+                }
+                
+                if (!props.color || !props.color.match(/^#[0-9A-Fa-f]{6}$/)) {
+                    errors.push('颜色格式不正确');
+                }
+                
+                if (props.lineHeight < 0.5 || props.lineHeight > 3) {
+                    errors.push('行高必须在0.5-3之间');
+                }
+                
+                return {
+                    valid: errors.length === 0,
+                    errors: errors
+                };
+            }
+            
+            /**
+             * 获取属性配置表单字段
+             */
+            getPropertyFields() {
+                return [
+                    {
+                        key: 'textContent',
+                        label: '文本内容',
+                        type: 'textarea',
+                        required: true,
+                        placeholder: '请输入文本内容'
+                    },
+                    {
+                        key: 'fontSize',
+                        label: '字体大小',
+                        type: 'number',
+                        min: 8,
+                        max: 72,
+                        unit: 'px'
+                    },
+                    {
+                        key: 'color',
+                        label: '文字颜色',
+                        type: 'color'
+                    },
+                    {
+                        key: 'fontWeight',
+                        label: '字体粗细',
+                        type: 'select',
+                        options: [
+                            { value: 'normal', label: '正常' },
+                            { value: 'bold', label: '粗体' },
+                            { value: '100', label: '极细' },
+                            { value: '300', label: '细体' },
+                            { value: '500', label: '中等' },
+                            { value: '700', label: '粗体' },
+                            { value: '900', label: '极粗' }
+                        ]
+                    },
+                    {
+                        key: 'textAlign',
+                        label: '文本对齐',
+                        type: 'select',
+                        options: [
+                            { value: 'left', label: '左对齐' },
+                            { value: 'center', label: '居中' },
+                            { value: 'right', label: '右对齐' },
+                            { value: 'justify', label: '两端对齐' }
+                        ]
+                    },
+                    {
+                        key: 'fontFamily',
+                        label: '字体',
+                        type: 'select',
+                        options: [
+                            { value: 'Arial, sans-serif', label: 'Arial' },
+                            { value: '"Microsoft YaHei", sans-serif', label: '微软雅黑' },
+                            { value: '"PingFang SC", sans-serif', label: '苹方' },
+                            { value: '"Helvetica Neue", sans-serif', label: 'Helvetica' },
+                            { value: 'serif', label: '衬线字体' },
+                            { value: 'monospace', label: '等宽字体' }
+                        ]
+                    },
+                    {
+                        key: 'lineHeight',
+                        label: '行高',
+                        type: 'number',
+                        min: 0.5,
+                        max: 3,
+                        step: 0.1
+                    },
+                    {
+                        key: 'letterSpacing',
+                        label: '字符间距',
+                        type: 'number',
+                        min: -5,
+                        max: 10,
+                        step: 0.1,
+                        unit: 'px'
+                    }
+                ];
+            }
+        }
+        
+        console.log('TextModule类已加载');
+        
+        /**
+         * 按钮模块类
+         */
+        class ButtonModule extends BaseModule {
+            constructor(id, fabricObject, properties = {}) {
+                super(id, 'BUTTON', fabricObject, properties);
+            }
+            
+            /**
+             * 获取默认属性
+             */
+            getDefaultProperties() {
+                return {
+                    buttonText: '点击按钮',
+                    backgroundColor: '#3b82f6',
+                    textColor: '#ffffff',
+                    fontSize: 16,
+                    fontWeight: 'normal',
+                    borderRadius: 6,
+                    borderWidth: 0,
+                    borderColor: '#d1d5db',
+                    actionType: 'SHOW_TOAST',
+                    actionData: {
+                        text: '按钮被点击了！',
+                        url: '',
+                        duration: 3000
+                    }
+                };
+            }
+            
+            /**
+             * 将属性应用到Fabric对象
+             */
+            applyPropertiesToFabric() {
+                if (!this.fabricObject) return;
+                
+                const props = this.properties;
+                
+                // 更新矩形样式
+                this.fabricObject.set({
+                    fill: props.backgroundColor,
+                    stroke: props.borderColor,
+                    strokeWidth: props.borderWidth,
+                    rx: props.borderRadius,
+                    ry: props.borderRadius
+                });
+                
+                // 更新文本（如果有文本对象）
+                if (this.fabricObject.type === 'group' && this.fabricObject.getObjects().length > 1) {
+                    const textObject = this.fabricObject.getObjects()[1];
+                    if (textObject) {
+                        textObject.set({
+                            text: props.buttonText,
+                            fontSize: props.fontSize,
+                            fill: props.textColor,
+                            fontWeight: props.fontWeight
+                        });
+                    }
+                }
+                
+                // 刷新画布
+                if (this.fabricObject.canvas) {
+                    this.fabricObject.canvas.renderAll();
+                }
+            }
+            
+            /**
+             * 创建Fabric按钮对象（矩形+文本组合）
+             */
+            static createFabricObject(text, options = {}) {
+                const defaultOptions = {
+                    left: options.left || 50,
+                    top: options.top || 50,
+                    width: options.width || 120,
+                    height: options.height || 40,
+                    backgroundColor: options.backgroundColor || '#3b82f6',
+                    textColor: options.textColor || '#ffffff',
+                    fontSize: options.fontSize || 16,
+                    fontWeight: options.fontWeight || 'normal',
+                    borderRadius: options.borderRadius || 6,
+                    borderWidth: options.borderWidth || 0,
+                    borderColor: options.borderColor || '#d1d5db'
+                };
+                
+                // 创建矩形背景
+                const rect = new fabric.Rect({
+                    left: 0,
+                    top: 0,
+                    width: defaultOptions.width,
+                    height: defaultOptions.height,
+                    fill: defaultOptions.backgroundColor,
+                    stroke: defaultOptions.borderColor,
+                    strokeWidth: defaultOptions.borderWidth,
+                    rx: defaultOptions.borderRadius,
+                    ry: defaultOptions.borderRadius
+                });
+                
+                // 创建文本
+                const textObj = new fabric.Text(text, {
+                    left: defaultOptions.width / 2,
+                    top: defaultOptions.height / 2,
+                    fontSize: defaultOptions.fontSize,
+                    fill: defaultOptions.textColor,
+                    fontWeight: defaultOptions.fontWeight,
+                    textAlign: 'center',
+                    originX: 'center',
+                    originY: 'center'
+                });
+                
+                // 创建组合对象
+                const group = new fabric.Group([rect, textObj], {
+                    left: defaultOptions.left,
+                    top: defaultOptions.top,
+                    selectable: true,
+                    hasControls: true,
+                    hasBorders: true
+                });
+                
+                return group;
+            }
+            
+            /**
+             * 在预览容器中渲染模块
+             */
+            renderPreview(container, containerWidth, containerHeight) {
+                const rect = this.getPercentageRect(containerWidth, containerHeight);
+                const props = this.properties;
+                
+                // 创建按钮元素
+                const buttonElement = DOMUtils.createElement('button', 'module-preview');
+                buttonElement.style.cssText = `
+                    position: absolute;
+                    left: ${rect.left};
+                    top: ${rect.top};
+                    width: ${rect.width};
+                    height: ${rect.height};
+                    background-color: ${props.backgroundColor};
+                    color: ${props.textColor};
+                    font-size: ${props.fontSize}px;
+                    font-weight: ${props.fontWeight};
+                    border: ${props.borderWidth}px solid ${props.borderColor};
+                    border-radius: ${props.borderRadius}px;
+                    cursor: pointer;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    transition: all 0.2s ease;
+                    z-index: 10;
+                    outline: none;
+                    font-family: inherit;
+                `;
+                
+                buttonElement.textContent = props.buttonText;
+                buttonElement.dataset.moduleId = this.id;
+                buttonElement.dataset.moduleType = this.type;
+                
+                // 添加点击事件
+                buttonElement.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    this.handleButtonClick();
+                });
+                
+                // 添加悬停效果
+                buttonElement.addEventListener('mouseenter', () => {
+                    buttonElement.style.opacity = '0.9';
+                    buttonElement.style.transform = 'scale(1.02)';
+                });
+                
+                buttonElement.addEventListener('mouseleave', () => {
+                    buttonElement.style.opacity = '1';
+                    buttonElement.style.transform = 'scale(1)';
+                });
+                
+                return buttonElement;
+            }
+            
+            /**
+             * 处理按钮点击事件
+             */
+            handleButtonClick() {
+                const { actionType, actionData } = this.properties;
+                
+                switch (actionType) {
+                    case 'SHOW_TOAST':
+                        this.showToast(actionData.text || '按钮被点击了！');
+                        break;
+                    case 'JUMP_URL':
+                        if (actionData.url) {
+                            window.open(actionData.url, '_blank');
+                        } else {
+                            this.showToast('未设置跳转链接');
+                        }
+                        break;
+                    case 'OPEN_VIP_PAGE':
+                        this.showToast('打开VIP页面功能');
+                        break;
+                    default:
+                        this.showToast('未知操作类型');
+                }
+            }
+            
+            /**
+             * 显示Toast提示
+             */
+            showToast(message) {
+                // 创建Toast元素
+                const toast = DOMUtils.createElement('div', 'fixed top-4 right-4 bg-gray-800 text-white px-4 py-2 rounded-lg shadow-lg z-50 transform transition-all duration-300');
+                toast.textContent = message;
+                
+                // 添加到页面
+                document.body.appendChild(toast);
+                
+                // 显示动画
+                setTimeout(() => {
+                    toast.classList.add('translate-x-0');
+                    toast.classList.remove('translate-x-full');
+                }, 100);
+                
+                // 自动移除
+                setTimeout(() => {
+                    toast.classList.add('translate-x-full');
+                    setTimeout(() => {
+                        if (toast.parentNode) {
+                            toast.parentNode.removeChild(toast);
+                        }
+                    }, 300);
+                }, 2000);
+            }
+            
+            /**
+             * 从JSON数据反序列化按钮模块
+             */
+            static deserialize(data, canvas) {
+                const fabricObject = ButtonModule.createFabricObject(
+                    data.properties.buttonText,
+                    {
+                        left: CoordinateUtils.fromPercentage(data.rect.left, canvas ? canvas.width : 375),
+                        top: CoordinateUtils.fromPercentage(data.rect.top, canvas ? canvas.height : 667),
+                        width: CoordinateUtils.fromPercentage(data.rect.width, canvas ? canvas.width : 375),
+                        height: CoordinateUtils.fromPercentage(data.rect.height, canvas ? canvas.height : 667),
+                        backgroundColor: data.properties.backgroundColor,
+                        textColor: data.properties.textColor,
+                        fontSize: data.properties.fontSize,
+                        fontWeight: data.properties.fontWeight,
+                        borderRadius: data.properties.borderRadius,
+                        borderWidth: data.properties.borderWidth,
+                        borderColor: data.properties.borderColor
+                    }
+                );
+                
+                const module = new ButtonModule(data.id, fabricObject, data.properties);
+                
+                if (canvas) {
+                    canvas.add(fabricObject);
+                }
+                
+                return module;
+            }
+            
+            /**
+             * 验证按钮模块属性
+             */
+            validateProperties() {
+                const errors = [];
+                const props = this.properties;
+                
+                if (!props.buttonText || props.buttonText.trim() === '') {
+                    errors.push('按钮文本不能为空');
+                }
+                
+                if (props.fontSize < 8 || props.fontSize > 36) {
+                    errors.push('字体大小必须在8-36px之间');
+                }
+                
+                if (!props.backgroundColor || !props.backgroundColor.match(/^#[0-9A-Fa-f]{6}$/)) {
+                    errors.push('背景颜色格式不正确');
+                }
+                
+                if (!props.textColor || !props.textColor.match(/^#[0-9A-Fa-f]{6}$/)) {
+                    errors.push('文字颜色格式不正确');
+                }
+                
+                if (props.borderRadius < 0 || props.borderRadius > 20) {
+                    errors.push('圆角半径必须在0-20px之间');
+                }
+                
+                if (props.actionType === 'JUMP_URL' && !props.actionData.url) {
+                    errors.push('跳转链接不能为空');
+                }
+                
+                return {
+                    valid: errors.length === 0,
+                    errors: errors
+                };
+            }
+            
+            /**
+             * 获取属性配置表单字段
+             */
+            getPropertyFields() {
+                return [
+                    {
+                        key: 'buttonText',
+                        label: '按钮文本',
+                        type: 'text',
+                        required: true,
+                        placeholder: '请输入按钮文本'
+                    },
+                    {
+                        key: 'backgroundColor',
+                        label: '背景颜色',
+                        type: 'color'
+                    },
+                    {
+                        key: 'textColor',
+                        label: '文字颜色',
+                        type: 'color'
+                    },
+                    {
+                        key: 'fontSize',
+                        label: '字体大小',
+                        type: 'number',
+                        min: 8,
+                        max: 36,
+                        unit: 'px'
+                    },
+                    {
+                        key: 'fontWeight',
+                        label: '字体粗细',
+                        type: 'select',
+                        options: [
+                            { value: 'normal', label: '正常' },
+                            { value: 'bold', label: '粗体' },
+                            { value: '500', label: '中等' },
+                            { value: '700', label: '粗体' }
+                        ]
+                    },
+                    {
+                        key: 'borderRadius',
+                        label: '圆角半径',
+                        type: 'number',
+                        min: 0,
+                        max: 20,
+                        unit: 'px'
+                    },
+                    {
+                        key: 'borderWidth',
+                        label: '边框宽度',
+                        type: 'number',
+                        min: 0,
+                        max: 5,
+                        unit: 'px'
+                    },
+                    {
+                        key: 'borderColor',
+                        label: '边框颜色',
+                        type: 'color'
+                    },
+                    {
+                        key: 'actionType',
+                        label: '事件类型',
+                        type: 'select',
+                        options: [
+                            { value: 'SHOW_TOAST', label: '显示提示' },
+                            { value: 'JUMP_URL', label: '跳转链接' },
+                            { value: 'OPEN_VIP_PAGE', label: '打开VIP页面' }
+                        ]
+                    }
+                ];
+            }
+            
+            /**
+             * 获取动态配置字段（根据事件类型）
+             */
+            getDynamicFields() {
+                const { actionType } = this.properties;
+                
+                switch (actionType) {
+                    case 'SHOW_TOAST':
+                        return [
+                            {
+                                key: 'actionData.text',
+                                label: '提示文字',
+                                type: 'text',
+                                placeholder: '请输入提示文字'
+                            }
+                        ];
+                    case 'JUMP_URL':
+                        return [
+                            {
+                                key: 'actionData.url',
+                                label: '跳转链接',
+                                type: 'url',
+                                placeholder: 'https://example.com',
+                                required: true
+                            }
+                        ];
+                    case 'OPEN_VIP_PAGE':
+                        return []; // 无需额外配置
+                    default:
+                        return [];
+                }
+            }
+        }
+        
+        console.log('ButtonModule类已加载');
+        
+        /**
+         * 视频模块类
+         */
+        class VideoModule extends BaseModule {
+            constructor(id, fabricObject, properties = {}) {
+                super(id, 'VIDEO', fabricObject, properties);
+            }
+            
+            /**
+             * 获取默认属性
+             */
+            getDefaultProperties() {
+                return {
+                    videoUrl: '',
+                    posterUrl: '',
+                    autoplay: false,
+                    muted: true,
+                    loop: false,
+                    controls: true,
+                    playsinline: true,
+                    placeholder: '请设置视频URL'
+                };
+            }
+            
+            /**
+             * 将属性应用到Fabric对象
+             */
+            applyPropertiesToFabric() {
+                if (!this.fabricObject) return;
+                
+                const props = this.properties;
+                
+                // 更新占位符显示
+                if (this.fabricObject.type === 'group') {
+                    const textObject = this.fabricObject.getObjects().find(obj => obj.type === 'text');
+                    if (textObject) {
+                        const displayText = props.videoUrl ? '🎬 视频' : props.placeholder;
+                        textObject.set('text', displayText);
+                    }
+                }
+                
+                // 刷新画布
+                if (this.fabricObject.canvas) {
+                    this.fabricObject.canvas.renderAll();
+                }
+            }
+            
+            /**
+             * 创建Fabric视频对象（占位符）
+             */
+            static createFabricObject(options = {}) {
+                const defaultOptions = {
+                    left: options.left || 50,
+                    top: options.top || 50,
+                    width: options.width || 200,
+                    height: options.height || 120,
+                    backgroundColor: '#f3f4f6',
+                    borderColor: '#d1d5db',
+                    placeholder: options.placeholder || '请设置视频URL'
+                };
+                
+                // 创建矩形背景
+                const rect = new fabric.Rect({
+                    left: 0,
+                    top: 0,
+                    width: defaultOptions.width,
+                    height: defaultOptions.height,
+                    fill: defaultOptions.backgroundColor,
+                    stroke: defaultOptions.borderColor,
+                    strokeWidth: 2,
+                    strokeDashArray: [5, 5]
+                });
+                
+                // 创建播放图标
+                const playIcon = new fabric.Text('▶', {
+                    left: defaultOptions.width / 2,
+                    top: defaultOptions.height / 2 - 10,
+                    fontSize: 24,
+                    fill: '#6b7280',
+                    textAlign: 'center',
+                    originX: 'center',
+                    originY: 'center'
+                });
+                
+                // 创建文本
+                const textObj = new fabric.Text(defaultOptions.placeholder, {
+                    left: defaultOptions.width / 2,
+                    top: defaultOptions.height / 2 + 20,
+                    fontSize: 12,
+                    fill: '#6b7280',
+                    textAlign: 'center',
+                    originX: 'center',
+                    originY: 'center'
+                });
+                
+                // 创建组合对象
+                const group = new fabric.Group([rect, playIcon, textObj], {
+                    left: defaultOptions.left,
+                    top: defaultOptions.top,
+                    selectable: true,
+                    hasControls: true,
+                    hasBorders: true
+                });
+                
+                return group;
+            }
+            
+            /**
+             * 在预览容器中渲染模块
+             */
+            renderPreview(container, containerWidth, containerHeight) {
+                const rect = this.getPercentageRect(containerWidth, containerHeight);
+                const props = this.properties;
+                
+                if (props.videoUrl) {
+                    // 创建视频元素
+                    const videoElement = DOMUtils.createElement('video', 'module-preview');
+                    videoElement.style.cssText = `
+                        position: absolute;
+                        left: ${rect.left};
+                        top: ${rect.top};
+                        width: ${rect.width};
+                        height: ${rect.height};
+                        object-fit: cover;
+                        border-radius: 4px;
+                        z-index: 10;
+                    `;
+                    
+                    // 设置视频属性
+                    videoElement.src = props.videoUrl;
+                    videoElement.controls = props.controls;
+                    videoElement.autoplay = props.autoplay;
+                    videoElement.muted = props.muted;
+                    videoElement.loop = props.loop;
+                    videoElement.playsInline = props.playsinline;
+                    
+                    if (props.posterUrl) {
+                        videoElement.poster = props.posterUrl;
+                    }
+                    
+                    videoElement.dataset.moduleId = this.id;
+                    videoElement.dataset.moduleType = this.type;
+                    
+                    // 错误处理
+                    videoElement.addEventListener('error', () => {
+                        this.createErrorPlaceholder(container, rect);
+                    });
+                    
+                    return videoElement;
+                } else {
+                    // 创建占位符
+                    return this.createPlaceholder(rect);
+                }
+            }
+            
+            /**
+             * 创建占位符
+             */
+            createPlaceholder(rect) {
+                const placeholder = DOMUtils.createElement('div', 'module-preview');
+                placeholder.style.cssText = `
+                    position: absolute;
+                    left: ${rect.left};
+                    top: ${rect.top};
+                    width: ${rect.width};
+                    height: ${rect.height};
+                    background: #f3f4f6;
+                    border: 2px dashed #d1d5db;
+                    border-radius: 4px;
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    justify-content: center;
+                    color: #6b7280;
+                    z-index: 10;
+                `;
+                
+                const icon = DOMUtils.createElement('div', '', '🎬');
+                icon.style.fontSize = '24px';
+                icon.style.marginBottom = '8px';
+                
+                const text = DOMUtils.createElement('div', '', this.properties.placeholder);
+                text.style.fontSize = '12px';
+                text.style.textAlign = 'center';
+                
+                placeholder.appendChild(icon);
+                placeholder.appendChild(text);
+                placeholder.dataset.moduleId = this.id;
+                placeholder.dataset.moduleType = this.type;
+                
+                return placeholder;
+            }
+            
+            /**
+             * 创建错误占位符
+             */
+            createErrorPlaceholder(container, rect) {
+                const errorPlaceholder = DOMUtils.createElement('div', 'module-preview');
+                errorPlaceholder.style.cssText = `
+                    position: absolute;
+                    left: ${rect.left};
+                    top: ${rect.top};
+                    width: ${rect.width};
+                    height: ${rect.height};
+                    background: #fef2f2;
+                    border: 2px dashed #f87171;
+                    border-radius: 4px;
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    justify-content: center;
+                    color: #dc2626;
+                    z-index: 10;
+                `;
+                
+                const icon = DOMUtils.createElement('div', '', '❌');
+                icon.style.fontSize = '24px';
+                icon.style.marginBottom = '8px';
+                
+                const text = DOMUtils.createElement('div', '', '视频加载失败');
+                text.style.fontSize = '12px';
+                text.style.textAlign = 'center';
+                
+                errorPlaceholder.appendChild(icon);
+                errorPlaceholder.appendChild(text);
+                
+                return errorPlaceholder;
+            }
+            
+            /**
+             * 从JSON数据反序列化视频模块
+             */
+            static deserialize(data, canvas) {
+                const fabricObject = VideoModule.createFabricObject({
+                    left: CoordinateUtils.fromPercentage(data.rect.left, canvas ? canvas.width : 375),
+                    top: CoordinateUtils.fromPercentage(data.rect.top, canvas ? canvas.height : 667),
+                    width: CoordinateUtils.fromPercentage(data.rect.width, canvas ? canvas.width : 375),
+                    height: CoordinateUtils.fromPercentage(data.rect.height, canvas ? canvas.height : 667),
+                    placeholder: data.properties.placeholder
+                });
+                
+                const module = new VideoModule(data.id, fabricObject, data.properties);
+                
+                if (canvas) {
+                    canvas.add(fabricObject);
+                }
+                
+                return module;
+            }
+            
+            /**
+             * 验证视频模块属性
+             */
+            validateProperties() {
+                const errors = [];
+                const props = this.properties;
+                
+                if (props.videoUrl && !this.isValidUrl(props.videoUrl)) {
+                    errors.push('视频URL格式不正确');
+                }
+                
+                if (props.posterUrl && !this.isValidUrl(props.posterUrl)) {
+                    errors.push('封面图URL格式不正确');
+                }
+                
+                return {
+                    valid: errors.length === 0,
+                    errors: errors
+                };
+            }
+            
+            /**
+             * 验证URL格式
+             */
+            isValidUrl(url) {
+                try {
+                    new URL(url);
+                    return true;
+                } catch {
+                    return false;
+                }
+            }
+            
+            /**
+             * 获取属性配置表单字段
+             */
+            getPropertyFields() {
+                return [
+                    {
+                        key: 'videoUrl',
+                        label: '视频URL',
+                        type: 'url',
+                        placeholder: 'https://example.com/video.mp4',
+                        required: true
+                    },
+                    {
+                        key: 'posterUrl',
+                        label: '封面图URL',
+                        type: 'url',
+                        placeholder: 'https://example.com/poster.jpg'
+                    },
+                    {
+                        key: 'autoplay',
+                        label: '自动播放',
+                        type: 'checkbox'
+                    },
+                    {
+                        key: 'muted',
+                        label: '静音',
+                        type: 'checkbox'
+                    },
+                    {
+                        key: 'loop',
+                        label: '循环播放',
+                        type: 'checkbox'
+                    },
+                    {
+                        key: 'controls',
+                        label: '显示控件',
+                        type: 'checkbox'
+                    },
+                    {
+                        key: 'playsinline',
+                        label: '内联播放',
+                        type: 'checkbox'
+                    }
+                ];
+            }
+        }
+        
+        /**
+         * GIF模块类
+         */
+        class GifModule extends BaseModule {
+            constructor(id, fabricObject, properties = {}) {
+                super(id, 'GIF', fabricObject, properties);
+            }
+            
+            /**
+             * 获取默认属性
+             */
+            getDefaultProperties() {
+                return {
+                    gifUrl: '',
+                    altText: 'GIF动图',
+                    autoplay: true,
+                    loop: true,
+                    placeholder: '请设置GIF URL'
+                };
+            }
+            
+            /**
+             * 将属性应用到Fabric对象
+             */
+            applyPropertiesToFabric() {
+                if (!this.fabricObject) return;
+                
+                const props = this.properties;
+                
+                // 更新占位符显示
+                if (this.fabricObject.type === 'group') {
+                    const textObject = this.fabricObject.getObjects().find(obj => obj.type === 'text');
+                    if (textObject) {
+                        const displayText = props.gifUrl ? '🎞️ GIF' : props.placeholder;
+                        textObject.set('text', displayText);
+                    }
+                }
+                
+                // 刷新画布
+                if (this.fabricObject.canvas) {
+                    this.fabricObject.canvas.renderAll();
+                }
+            }
+            
+            /**
+             * 创建Fabric GIF对象（占位符）
+             */
+            static createFabricObject(options = {}) {
+                const defaultOptions = {
+                    left: options.left || 50,
+                    top: options.top || 50,
+                    width: options.width || 150,
+                    height: options.height || 150,
+                    backgroundColor: '#f3f4f6',
+                    borderColor: '#d1d5db',
+                    placeholder: options.placeholder || '请设置GIF URL'
+                };
+                
+                // 创建矩形背景
+                const rect = new fabric.Rect({
+                    left: 0,
+                    top: 0,
+                    width: defaultOptions.width,
+                    height: defaultOptions.height,
+                    fill: defaultOptions.backgroundColor,
+                    stroke: defaultOptions.borderColor,
+                    strokeWidth: 2,
+                    strokeDashArray: [5, 5]
+                });
+                
+                // 创建GIF图标
+                const gifIcon = new fabric.Text('🎞️', {
+                    left: defaultOptions.width / 2,
+                    top: defaultOptions.height / 2 - 10,
+                    fontSize: 24,
+                    fill: '#6b7280',
+                    textAlign: 'center',
+                    originX: 'center',
+                    originY: 'center'
+                });
+                
+                // 创建文本
+                const textObj = new fabric.Text(defaultOptions.placeholder, {
+                    left: defaultOptions.width / 2,
+                    top: defaultOptions.height / 2 + 20,
+                    fontSize: 12,
+                    fill: '#6b7280',
+                    textAlign: 'center',
+                    originX: 'center',
+                    originY: 'center'
+                });
+                
+                // 创建组合对象
+                const group = new fabric.Group([rect, gifIcon, textObj], {
+                    left: defaultOptions.left,
+                    top: defaultOptions.top,
+                    selectable: true,
+                    hasControls: true,
+                    hasBorders: true
+                });
+                
+                return group;
+            }
+            
+            /**
+             * 在预览容器中渲染模块
+             */
+            renderPreview(container, containerWidth, containerHeight) {
+                const rect = this.getPercentageRect(containerWidth, containerHeight);
+                const props = this.properties;
+                
+                if (props.gifUrl) {
+                    // 创建图片元素
+                    const imgElement = DOMUtils.createElement('img', 'module-preview');
+                    imgElement.style.cssText = `
+                        position: absolute;
+                        left: ${rect.left};
+                        top: ${rect.top};
+                        width: ${rect.width};
+                        height: ${rect.height};
+                        object-fit: cover;
+                        border-radius: 4px;
+                        z-index: 10;
+                    `;
+                    
+                    imgElement.src = props.gifUrl;
+                    imgElement.alt = props.altText;
+                    imgElement.dataset.moduleId = this.id;
+                    imgElement.dataset.moduleType = this.type;
+                    
+                    // 错误处理
+                    imgElement.addEventListener('error', () => {
+                        this.createErrorPlaceholder(container, rect);
+                    });
+                    
+                    return imgElement;
+                } else {
+                    // 创建占位符
+                    return this.createPlaceholder(rect);
+                }
+            }
+            
+            /**
+             * 创建占位符
+             */
+            createPlaceholder(rect) {
+                const placeholder = DOMUtils.createElement('div', 'module-preview');
+                placeholder.style.cssText = `
+                    position: absolute;
+                    left: ${rect.left};
+                    top: ${rect.top};
+                    width: ${rect.width};
+                    height: ${rect.height};
+                    background: #f3f4f6;
+                    border: 2px dashed #d1d5db;
+                    border-radius: 4px;
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    justify-content: center;
+                    color: #6b7280;
+                    z-index: 10;
+                `;
+                
+                const icon = DOMUtils.createElement('div', '', '🎞️');
+                icon.style.fontSize = '24px';
+                icon.style.marginBottom = '8px';
+                
+                const text = DOMUtils.createElement('div', '', this.properties.placeholder);
+                text.style.fontSize = '12px';
+                text.style.textAlign = 'center';
+                
+                placeholder.appendChild(icon);
+                placeholder.appendChild(text);
+                placeholder.dataset.moduleId = this.id;
+                placeholder.dataset.moduleType = this.type;
+                
+                return placeholder;
+            }
+            
+            /**
+             * 创建错误占位符
+             */
+            createErrorPlaceholder(container, rect) {
+                const errorPlaceholder = DOMUtils.createElement('div', 'module-preview');
+                errorPlaceholder.style.cssText = `
+                    position: absolute;
+                    left: ${rect.left};
+                    top: ${rect.top};
+                    width: ${rect.width};
+                    height: ${rect.height};
+                    background: #fef2f2;
+                    border: 2px dashed #f87171;
+                    border-radius: 4px;
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    justify-content: center;
+                    color: #dc2626;
+                    z-index: 10;
+                `;
+                
+                const icon = DOMUtils.createElement('div', '', '❌');
+                icon.style.fontSize = '24px';
+                icon.style.marginBottom = '8px';
+                
+                const text = DOMUtils.createElement('div', '', 'GIF加载失败');
+                text.style.fontSize = '12px';
+                text.style.textAlign = 'center';
+                
+                errorPlaceholder.appendChild(icon);
+                errorPlaceholder.appendChild(text);
+                
+                return errorPlaceholder;
+            }
+            
+            /**
+             * 从JSON数据反序列化GIF模块
+             */
+            static deserialize(data, canvas) {
+                const fabricObject = GifModule.createFabricObject({
+                    left: CoordinateUtils.fromPercentage(data.rect.left, canvas ? canvas.width : 375),
+                    top: CoordinateUtils.fromPercentage(data.rect.top, canvas ? canvas.height : 667),
+                    width: CoordinateUtils.fromPercentage(data.rect.width, canvas ? canvas.width : 375),
+                    height: CoordinateUtils.fromPercentage(data.rect.height, canvas ? canvas.height : 667),
+                    placeholder: data.properties.placeholder
+                });
+                
+                const module = new GifModule(data.id, fabricObject, data.properties);
+                
+                if (canvas) {
+                    canvas.add(fabricObject);
+                }
+                
+                return module;
+            }
+            
+            /**
+             * 验证GIF模块属性
+             */
+            validateProperties() {
+                const errors = [];
+                const props = this.properties;
+                
+                if (props.gifUrl && !this.isValidUrl(props.gifUrl)) {
+                    errors.push('GIF URL格式不正确');
+                }
+                
+                if (!props.altText || props.altText.trim() === '') {
+                    errors.push('替代文本不能为空');
+                }
+                
+                return {
+                    valid: errors.length === 0,
+                    errors: errors
+                };
+            }
+            
+            /**
+             * 验证URL格式
+             */
+            isValidUrl(url) {
+                try {
+                    new URL(url);
+                    return true;
+                } catch {
+                    return false;
+                }
+            }
+            
+            /**
+             * 获取属性配置表单字段
+             */
+            getPropertyFields() {
+                return [
+                    {
+                        key: 'gifUrl',
+                        label: 'GIF URL',
+                        type: 'url',
+                        placeholder: 'https://example.com/image.gif',
+                        required: true
+                    },
+                    {
+                        key: 'altText',
+                        label: '替代文本',
+                        type: 'text',
+                        placeholder: '描述GIF内容'
+                    },
+                    {
+                        key: 'autoplay',
+                        label: '自动播放',
+                        type: 'checkbox'
+                    },
+                    {
+                        key: 'loop',
+                        label: '循环播放',
+                        type: 'checkbox'
+                    }
+                ];
+            }
+        }
+        
+        console.log('VideoModule和GifModule类已加载');
+        
+        // ==================== 状态管理系统 ====================
+        
+        /**
+         * 应用状态管理类
+         */
+        class AppState {
+            constructor() {
+                this.modules = new Map(); // 存储所有模块
+                this.selectedModule = null; // 当前选中的模块
+                this.backgroundImage = null; // 背景图片信息
+                this.canvas = null; // Fabric.js画布实例
+                this.backgroundImageData = null; // 背景图片的base64数据
+                this.backgroundDimensions = { width: 0, height: 0 }; // 背景图片尺寸
+                this.listeners = new Map(); // 事件监听器
+                
+                // 初始化全局状态
+                this.initializeGlobalState();
+            }
+            
+            /**
+             * 初始化全局状态
+             */
+            initializeGlobalState() {
+                // 将AppState实例设置为全局可访问
+                window.appState = this;
+                
+                // 设置模块工厂
+                this.moduleFactory = {
+                    TEXT: TextModule,
+                    BUTTON: ButtonModule,
+                    VIDEO: VideoModule,
+                    GIF: GifModule
+                };
+                
+                console.log('应用状态管理已初始化');
+            }
+            
+            /**
+             * 添加模块
+             */
+            addModule(module) {
+                if (!(module instanceof BaseModule)) {
+                    throw new Error('模块必须是BaseModule的实例');
+                }
+                
+                this.modules.set(module.id, module);
+                this.emit('moduleAdded', module);
+                
+                console.log(`模块已添加: ${module.type} (${module.id})`);
+                return module;
+            }
+            
+            /**
+             * 移除模块
+             */
+            removeModule(moduleId) {
+                const module = this.modules.get(moduleId);
+                if (!module) {
+                    console.warn(`模块不存在: ${moduleId}`);
+                    return false;
+                }
+                
+                // 如果当前选中的模块被删除，取消选中
+                if (this.selectedModule && this.selectedModule.id === moduleId) {
+                    this.selectModule(null);
+                }
+                
+                // 从画布中移除
+                if (module.fabricObject && this.canvas) {
+                    this.canvas.remove(module.fabricObject);
+                }
+                
+                // 清理模块资源
+                module.destroy();
+                
+                // 从存储中移除
+                this.modules.delete(moduleId);
+                
+                this.emit('moduleRemoved', moduleId);
+                console.log(`模块已移除: ${moduleId}`);
+                return true;
+            }
+            
+            /**
+             * 选择模块
+             */
+            selectModule(moduleId) {
+                const previousModule = this.selectedModule;
+                
+                if (moduleId === null) {
+                    this.selectedModule = null;
+                } else {
+                    const module = this.modules.get(moduleId);
+                    if (!module) {
+                        console.warn(`模块不存在: ${moduleId}`);
+                        return false;
+                    }
+                    this.selectedModule = module;
+                }
+                
+                this.emit('moduleSelected', this.selectedModule, previousModule);
+                console.log(`模块已选中: ${moduleId}`);
+                return true;
+            }
+            
+            /**
+             * 通过Fabric对象选择模块
+             */
+            selectModuleByFabricObject(fabricObject) {
+                if (!fabricObject || !fabricObject.moduleInstance) {
+                    this.selectModule(null);
+                    return false;
+                }
+                
+                return this.selectModule(fabricObject.moduleInstance.id);
+            }
+            
+            /**
+             * 获取模块
+             */
+            getModule(moduleId) {
+                return this.modules.get(moduleId);
+            }
+            
+            /**
+             * 获取所有模块
+             */
+            getAllModules() {
+                return Array.from(this.modules.values());
+            }
+            
+            /**
+             * 获取选中的模块
+             */
+            getSelectedModule() {
+                return this.selectedModule;
+            }
+            
+            /**
+             * 更新模块属性
+             */
+            updateModule(moduleId, properties) {
+                const module = this.modules.get(moduleId);
+                if (!module) {
+                    console.warn(`模块不存在: ${moduleId}`);
+                    return false;
+                }
+                
+                module.updateProperties(properties);
+                this.emit('moduleUpdated', module);
+                
+                console.log(`模块属性已更新: ${moduleId}`);
+                return true;
+            }
+            
+            /**
+             * 设置背景图片
+             */
+            setBackgroundImage(imageData, dimensions) {
+                this.backgroundImageData = imageData;
+                this.backgroundDimensions = dimensions;
+                
+                if (this.canvas) {
+                    this.updateCanvasBackground();
+                }
+                
+                this.emit('backgroundImageChanged', imageData, dimensions);
+                console.log(`背景图片已设置: ${dimensions.width}x${dimensions.height}`);
+            }
+            
+            /**
+             * 更新画布背景
+             */
+            updateCanvasBackground() {
+                console.log('🎨 开始更新Canvas背景');
+                console.log('Canvas实例:', this.canvas);
+                console.log('背景图片数据长度:', this.backgroundImageData ? this.backgroundImageData.length : 0);
+                console.log('背景图片尺寸:', this.backgroundDimensions);
+                
+                if (!this.canvas || !this.backgroundImageData) {
+                    console.warn('❌ Canvas背景更新失败: Canvas或背景数据为空');
+                    return;
+                }
+                
+                // 显示加载状态
+                const loadingElement = document.getElementById('canvasLoading');
+                if (loadingElement) {
+                    loadingElement.classList.remove('hidden');
+                }
+                
+                fabric.Image.fromURL(this.backgroundImageData, (img) => {
+                    console.log('✅ 图片加载成功:', img);
+                    
+                    // 计算画布尺寸
+                    const rawContainerWidth = this.canvas.getElement().parentElement.clientWidth;
+                    const containerWidth = rawContainerWidth || 800; // 默认宽度800px
+                    console.log('原始容器宽度:', rawContainerWidth);
+                    console.log('实际容器宽度:', containerWidth);
+                    console.log('原始图片尺寸:', this.backgroundDimensions);
+                    
+                    const scale = containerWidth / this.backgroundDimensions.width;
+                    console.log('缩放比例:', scale);
+                    
+                    const canvasWidth = containerWidth;
+                    const canvasHeight = this.backgroundDimensions.height * scale;
+                    console.log('计算后Canvas尺寸:', { width: canvasWidth, height: canvasHeight });
+                    
+                    // 设置画布尺寸
+                    this.canvas.setDimensions({
+                        width: canvasWidth,
+                        height: canvasHeight
+                    });
+                    console.log('✅ Canvas尺寸已设置');
+                    
+                    // 设置背景图片
+                    img.set({
+                        left: 0,
+                        top: 0,
+                        scaleX: scale,
+                        scaleY: scale,
+                        selectable: false,
+                        evented: false
+                    });
+                    console.log('✅ 图片属性已设置');
+                    
+                    this.canvas.setBackgroundImage(img, this.canvas.renderAll.bind(this.canvas));
+                    console.log('✅ Canvas背景图片已设置并重绘');
+                    
+                    // 隐藏加载状态
+                    const loadingElement = document.getElementById('canvasLoading');
+                    if (loadingElement) {
+                        loadingElement.classList.add('hidden');
+                    }
+                    
+                    // 触发预览更新
+                    this.emit('canvasUpdated');
+                    console.log('✅ 预览更新事件已触发');
+                }, (error) => {
+                    console.error('❌ 图片加载失败:', error);
+                    
+                    // 隐藏加载状态
+                    const loadingElement = document.getElementById('canvasLoading');
+                    if (loadingElement) {
+                        loadingElement.classList.add('hidden');
+                    }
+                    
+                    alert('背景图片加载失败，请重试');
+                });
+            }
+            
+            /**
+             * 创建模块
+             */
+            createModule(type, fabricObject, properties = {}) {
+                const ModuleClass = this.moduleFactory[type];
+                if (!ModuleClass) {
+                    throw new Error(`未知的模块类型: ${type}`);
+                }
+                
+                const module = new ModuleClass(null, fabricObject, properties);
+                return this.addModule(module);
+            }
+            
+            /**
+             * 批量创建模块（用于数据导入）
+             */
+            createModulesFromData(modulesData) {
+                const createdModules = [];
+                
+                for (const moduleData of modulesData) {
+                    try {
+                        const ModuleClass = this.moduleFactory[moduleData.type];
+                        if (!ModuleClass) {
+                            console.warn(`未知的模块类型: ${moduleData.type}`);
+                            continue;
+                        }
+                        
+                        const module = ModuleClass.deserialize(moduleData, this.canvas);
+                        this.addModule(module);
+                        createdModules.push(module);
+                    } catch (error) {
+                        console.error(`创建模块失败:`, error);
+                    }
+                }
+                
+                return createdModules;
+            }
+            
+            /**
+             * 清空所有模块
+             */
+            clearAllModules() {
+                const moduleIds = Array.from(this.modules.keys());
+                
+                for (const moduleId of moduleIds) {
+                    this.removeModule(moduleId);
+                }
+                
+                this.selectedModule = null;
+                this.emit('allModulesCleared');
+                
+                console.log('所有模块已清空');
+            }
+            
+            /**
+             * 导出配置
+             */
+            exportConfiguration() {
+                const config = {
+                    backgroundImageUrl: this.backgroundImageData,
+                    backgroundDimensions: { ...this.backgroundDimensions },
+                    modules: []
+                };
+                
+                // 序列化所有模块
+                for (const module of this.modules.values()) {
+                    try {
+                        const moduleData = module.serialize(
+                            this.backgroundDimensions.width,
+                            this.backgroundDimensions.height
+                        );
+                        config.modules.push(moduleData);
+                    } catch (error) {
+                        console.error(`序列化模块失败:`, error);
+                    }
+                }
+                
+                return config;
+            }
+            
+            /**
+             * 导入配置
+             */
+            importConfiguration(config) {
+                try {
+                    // 清空当前状态
+                    this.clearAllModules();
+                    
+                    // 设置背景图片
+                    if (config.backgroundImageUrl && config.backgroundDimensions) {
+                        this.setBackgroundImage(config.backgroundImageUrl, config.backgroundDimensions);
+                    }
+                    
+                    // 创建模块
+                    if (config.modules && config.modules.length > 0) {
+                        this.createModulesFromData(config.modules);
+                    }
+                    
+                    this.emit('configurationImported', config);
+                    console.log('配置导入成功');
+                    return true;
+                } catch (error) {
+                    console.error('配置导入失败:', error);
+                    return false;
+                }
+            }
+            
+            /**
+             * 获取画布尺寸
+             */
+            getCanvasDimensions() {
+                if (!this.canvas) return { width: 0, height: 0 };
+                
+                return {
+                    width: this.canvas.width,
+                    height: this.canvas.height
+                };
+            }
+            
+            /**
+             * 设置画布实例
+             */
+            setCanvas(canvas) {
+                this.canvas = canvas;
+                
+                if (this.backgroundImageData) {
+                    this.updateCanvasBackground();
+                }
+                
+                console.log('画布实例已设置');
+            }
+            
+            /**
+             * 添加事件监听器
+             */
+            on(event, callback) {
+                if (!this.listeners.has(event)) {
+                    this.listeners.set(event, []);
+                }
+                this.listeners.get(event).push(callback);
+            }
+            
+            /**
+             * 移除事件监听器
+             */
+            off(event, callback) {
+                if (!this.listeners.has(event)) return;
+                
+                const callbacks = this.listeners.get(event);
+                const index = callbacks.indexOf(callback);
+                if (index !== -1) {
+                    callbacks.splice(index, 1);
+                }
+            }
+            
+            /**
+             * 触发事件
+             */
+            emit(event, ...args) {
+                if (!this.listeners.has(event)) return;
+                
+                const callbacks = this.listeners.get(event);
+                for (const callback of callbacks) {
+                    try {
+                        callback(...args);
+                    } catch (error) {
+                        console.error(`事件处理器错误 (${event}):`, error);
+                    }
+                }
+            }
+            
+            /**
+             * 获取统计信息
+             */
+            getStatistics() {
+                const stats = {
+                    totalModules: this.modules.size,
+                    moduleTypes: {},
+                    hasBackground: !!this.backgroundImageData,
+                    canvasSize: this.getCanvasDimensions()
+                };
+                
+                // 统计模块类型
+                for (const module of this.modules.values()) {
+                    stats.moduleTypes[module.type] = (stats.moduleTypes[module.type] || 0) + 1;
+                }
+                
+                return stats;
+            }
+            
+            /**
+             * 验证当前状态
+             */
+            validate() {
+                const errors = [];
+                
+                // 验证背景图片
+                if (!this.backgroundImageData) {
+                    errors.push('未设置背景图片');
+                }
+                
+                // 验证模块
+                for (const module of this.modules.values()) {
+                    const validation = module.validateProperties();
+                    if (!validation.valid) {
+                        errors.push(`模块 ${module.id} 验证失败: ${validation.errors.join(', ')}`);
+                    }
+                }
+                
+                return {
+                    valid: errors.length === 0,
+                    errors: errors
+                };
+            }
+        }
+        
+        console.log('AppState类已加载');
+        
+        // ==================== 画布管理系统 ====================
+        
+        /**
+         * 画布管理器类
+         */
+        class CanvasManager {
+            constructor(canvasElement, appState) {
+                this.canvasElement = canvasElement;
+                this.appState = appState;
+                this.canvas = null;
+                this.isDrawing = false;
+                this.startPoint = null;
+                this.currentRect = null;
+                this.dragHint = null;
+                this.resizeObserver = null;
+                this.createTypeSelector = null;
+                
+                // 初始化画布
+                this.initCanvas();
+                this.setupEventListeners();
+                this.setupResizeObserver();
+                
+                console.log('画布管理器已初始化');
+            }
+            
+            /**
+             * 初始化Fabric.js画布
+             */
+            initCanvas() {
+                // 创建Fabric.js画布
+                this.canvas = new fabric.Canvas(this.canvasElement, {
+                    width: this.canvasElement.parentElement.clientWidth,
+                    height: 600,
+                    backgroundColor: '#ffffff',
+                    selection: true,
+                    preserveObjectStacking: true
+                });
+                
+                // 设置画布到应用状态
+                this.appState.setCanvas(this.canvas);
+                
+                // 设置全局引用
+                window.canvas = this.canvas;
+                
+                // 获取拖拽提示元素
+                this.dragHint = document.getElementById('dragHint');
+                
+                console.log('Fabric.js画布已初始化');
+            }
+            
+            /**
+             * 设置事件监听器
+             */
+            setupEventListeners() {
+                // 画布选择事件
+                this.canvas.on('selection:created', (e) => {
+                    const activeObject = e.selected[0];
+                    this.appState.selectModuleByFabricObject(activeObject);
+                });
+                
+                this.canvas.on('selection:updated', (e) => {
+                    const activeObject = e.selected[0];
+                    this.appState.selectModuleByFabricObject(activeObject);
+                });
+                
+                this.canvas.on('selection:cleared', () => {
+                    this.appState.selectModule(null);
+                });
+                
+                // 对象修改事件
+                this.canvas.on('object:modified', (e) => {
+                    const fabricObject = e.target;
+                    if (fabricObject.moduleInstance) {
+                        this.appState.emit('moduleModified', fabricObject.moduleInstance);
+                    }
+                });
+                
+                // 鼠标事件 - 拖拽创建模块
+                this.canvas.on('mouse:down', (e) => {
+                    this.handleMouseDown(e);
+                });
+                
+                this.canvas.on('mouse:move', (e) => {
+                    this.handleMouseMove(e);
+                });
+                
+                this.canvas.on('mouse:up', (e) => {
+                    this.handleMouseUp(e);
+                });
+                
+                // 阻止默认的框选行为
+                this.canvas.on('before:selection:created', (e) => {
+                    if (this.isDrawing) {
+                        return false;
+                    }
+                });
+                
+                console.log('画布事件监听器已设置');
+            }
+            
+            /**
+             * 设置尺寸监听器
+             */
+            setupResizeObserver() {
+                if (typeof ResizeObserver !== 'undefined') {
+                    this.resizeObserver = new ResizeObserver(() => {
+                        this.handleResize();
+                    });
+                    
+                    this.resizeObserver.observe(this.canvasElement.parentElement);
+                } else {
+                    // 降级到窗口resize事件
+                    window.addEventListener('resize', () => {
+                        this.handleResize();
+                    });
+                }
+            }
+            
+            /**
+             * 处理画布尺寸变化
+             */
+            handleResize() {
+                const container = this.canvasElement.parentElement;
+                const containerWidth = container.clientWidth;
+                
+                if (this.appState.backgroundImageData) {
+                    // 有背景图片时，按比例缩放
+                    const scale = containerWidth / this.appState.backgroundDimensions.width;
+                    const newHeight = this.appState.backgroundDimensions.height * scale;
+                    
+                    this.canvas.setDimensions({
+                        width: containerWidth,
+                        height: newHeight
+                    });
+                } else {
+                    // 没有背景图片时，保持固定高度
+                    this.canvas.setDimensions({
+                        width: containerWidth,
+                        height: 600
+                    });
+                }
+                
+                // 更新背景图片
+                this.appState.updateCanvasBackground();
+                
+                console.log(`画布尺寸已更新: ${containerWidth}x${this.canvas.height}`);
+            }
+            
+            /**
+             * 处理鼠标按下事件
+             */
+            handleMouseDown(e) {
+                if (e.target) {
+                    // 点击了已有对象，不进行拖拽创建
+                    return;
+                }
+                
+                // 开始拖拽创建
+                this.isDrawing = true;
+                this.startPoint = this.canvas.getPointer(e.e);
+                
+                // 禁用画布选择
+                this.canvas.selection = false;
+                this.canvas.defaultCursor = 'crosshair';
+                
+                // 显示拖拽提示
+                this.showDragHint(this.startPoint.x, this.startPoint.y, 0, 0);
+            }
+            
+            /**
+             * 处理鼠标移动事件
+             */
+            handleMouseMove(e) {
+                if (!this.isDrawing) return;
+                
+                const currentPoint = this.canvas.getPointer(e.e);
+                const width = Math.abs(currentPoint.x - this.startPoint.x);
+                const height = Math.abs(currentPoint.y - this.startPoint.y);
+                
+                // 更新拖拽提示
+                this.showDragHint(
+                    Math.min(this.startPoint.x, currentPoint.x),
+                    Math.min(this.startPoint.y, currentPoint.y),
+                    width,
+                    height
+                );
+            }
+            
+            /**
+             * 处理鼠标抬起事件
+             */
+            handleMouseUp(e) {
+                if (!this.isDrawing) return;
+                
+                this.isDrawing = false;
+                
+                // 恢复画布选择
+                this.canvas.selection = true;
+                this.canvas.defaultCursor = 'default';
+                
+                // 隐藏拖拽提示
+                this.hideDragHint();
+                
+                const currentPoint = this.canvas.getPointer(e.e);
+                const width = Math.abs(currentPoint.x - this.startPoint.x);
+                const height = Math.abs(currentPoint.y - this.startPoint.y);
+                
+                // 检查是否创建了有效的区域
+                if (width > 10 && height > 10) {
+                    this.createModuleOnDrag(
+                        Math.min(this.startPoint.x, currentPoint.x),
+                        Math.min(this.startPoint.y, currentPoint.y),
+                        width,
+                        height
+                    );
+                }
+                
+                this.startPoint = null;
+            }
+            
+            /**
+             * 显示拖拽提示
+             */
+            showDragHint(x, y, width, height) {
+                if (!this.dragHint) return;
+                
+                this.dragHint.style.left = `${x}px`;
+                this.dragHint.style.top = `${y}px`;
+                this.dragHint.style.width = `${width}px`;
+                this.dragHint.style.height = `${height}px`;
+                this.dragHint.classList.remove('hidden');
+            }
+            
+            /**
+             * 隐藏拖拽提示
+             */
+            hideDragHint() {
+                if (this.dragHint) {
+                    this.dragHint.classList.add('hidden');
+                }
+            }
+            
+            /**
+             * 拖拽创建模块
+             */
+            createModuleOnDrag(x, y, width, height) {
+                // 显示模块类型选择器
+                this.showModuleTypeSelector(x, y, width, height);
+            }
+            
+            /**
+             * 显示模块类型选择器
+             */
+            showModuleTypeSelector(x, y, width, height) {
+                // 移除已存在的选择器
+                if (this.createTypeSelector) {
+                    this.createTypeSelector.remove();
+                }
+                
+                // 创建选择器
+                this.createTypeSelector = document.createElement('div');
+                this.createTypeSelector.className = 'absolute bg-white border border-gray-300 rounded-lg shadow-lg p-4 z-50';
+                this.createTypeSelector.style.left = `${x}px`;
+                this.createTypeSelector.style.top = `${y + height + 10}px`;
+                
+                // 添加标题
+                const title = document.createElement('div');
+                title.className = 'text-sm font-semibold text-gray-700 mb-2';
+                title.textContent = '选择模块类型';
+                this.createTypeSelector.appendChild(title);
+                
+                // 添加类型选项
+                const types = [
+                    { value: 'TEXT', label: '📝 文本', icon: '📝' },
+                    { value: 'BUTTON', label: '🔘 按钮', icon: '🔘' },
+                    { value: 'VIDEO', label: '🎬 视频', icon: '🎬' },
+                    { value: 'GIF', label: '🎞️ GIF', icon: '🎞️' }
+                ];
+                
+                const buttonContainer = document.createElement('div');
+                buttonContainer.className = 'grid grid-cols-2 gap-2';
+                
+                types.forEach(type => {
+                    const button = document.createElement('button');
+                    button.className = 'flex items-center gap-2 px-3 py-2 text-sm border border-gray-200 rounded hover:bg-gray-50 transition-colors';
+                    button.innerHTML = `<span>${type.icon}</span><span>${type.label}</span>`;
+                    
+                    button.addEventListener('click', () => {
+                        this.createModuleWithType(type.value, x, y, width, height);
+                        this.hideModuleTypeSelector();
+                    });
+                    
+                    buttonContainer.appendChild(button);
+                });
+                
+                this.createTypeSelector.appendChild(buttonContainer);
+                
+                // 添加取消按钮
+                const cancelButton = document.createElement('button');
+                cancelButton.className = 'w-full mt-2 px-3 py-2 text-sm text-gray-600 border border-gray-200 rounded hover:bg-gray-50 transition-colors';
+                cancelButton.textContent = '取消';
+                cancelButton.addEventListener('click', () => {
+                    this.hideModuleTypeSelector();
+                });
+                
+                this.createTypeSelector.appendChild(cancelButton);
+                
+                // 添加到画布容器
+                this.canvasElement.parentElement.appendChild(this.createTypeSelector);
+                
+                // 点击外部关闭
+                const handleOutsideClick = (e) => {
+                    if (!this.createTypeSelector.contains(e.target)) {
+                        this.hideModuleTypeSelector();
+                        document.removeEventListener('click', handleOutsideClick);
+                    }
+                };
+                
+                setTimeout(() => {
+                    document.addEventListener('click', handleOutsideClick);
+                }, 100);
+            }
+            
+            /**
+             * 隐藏模块类型选择器
+             */
+            hideModuleTypeSelector() {
+                if (this.createTypeSelector) {
+                    this.createTypeSelector.remove();
+                    this.createTypeSelector = null;
+                }
+            }
+            
+            /**
+             * 创建指定类型的模块
+             */
+            createModuleWithType(type, x, y, width, height) {
+                try {
+                    let fabricObject;
+                    
+                    switch (type) {
+                        case 'TEXT':
+                            fabricObject = TextModule.createFabricObject('新文本', {
+                                left: x,
+                                top: y,
+                                width: width,
+                                height: height
+                            });
+                            break;
+                        case 'BUTTON':
+                            fabricObject = ButtonModule.createFabricObject('新按钮', {
+                                left: x,
+                                top: y,
+                                width: width,
+                                height: height
+                            });
+                            break;
+                        case 'VIDEO':
+                            fabricObject = VideoModule.createFabricObject({
+                                left: x,
+                                top: y,
+                                width: width,
+                                height: height
+                            });
+                            break;
+                        case 'GIF':
+                            fabricObject = GifModule.createFabricObject({
+                                left: x,
+                                top: y,
+                                width: width,
+                                height: height
+                            });
+                            break;
+                        default:
+                            throw new Error(`未知的模块类型: ${type}`);
+                    }
+                    
+                    // 添加到画布
+                    this.canvas.add(fabricObject);
+                    
+                    // 创建模块实例
+                    const module = this.appState.createModule(type, fabricObject);
+                    
+                    // 选中新创建的模块
+                    this.canvas.setActiveObject(fabricObject);
+                    this.appState.selectModule(module.id);
+                    
+                    // 刷新画布
+                    this.canvas.renderAll();
+                    
+                    console.log(`模块已创建: ${type} (${module.id})`);
+                } catch (error) {
+                    console.error('创建模块失败:', error);
+                }
+            }
+            
+            /**
+             * 更新背景图片
+             */
+            updateBackgroundImage(imageData, dimensions) {
+                this.appState.setBackgroundImage(imageData, dimensions);
+            }
+            
+            /**
+             * 同步预览
+             */
+            syncWithPreview() {
+                this.appState.emit('canvasUpdated');
+            }
+            
+            /**
+             * 清空画布
+             */
+            clearCanvas() {
+                this.canvas.clear();
+                this.appState.clearAllModules();
+                
+                // 重新设置背景
+                if (this.appState.backgroundImageData) {
+                    this.appState.updateCanvasBackground();
+                }
+                
+                console.log('画布已清空');
+            }
+            
+            /**
+             * 获取画布数据URL
+             */
+            getCanvasDataURL(options = {}) {
+                return this.canvas.toDataURL(options);
+            }
+            
+            /**
+             * 获取画布JSON数据
+             */
+            getCanvasJSON() {
+                return this.canvas.toJSON();
+            }
+            
+            /**
+             * 从JSON数据加载画布
+             */
+            loadFromJSON(jsonData) {
+                this.canvas.loadFromJSON(jsonData, () => {
+                    this.canvas.renderAll();
+                    console.log('画布已从JSON加载');
+                });
+            }
+            
+            /**
+             * 销毁画布管理器
+             */
+            destroy() {
+                if (this.resizeObserver) {
+                    this.resizeObserver.disconnect();
+                }
+                
+                if (this.createTypeSelector) {
+                    this.createTypeSelector.remove();
+                }
+                
+                if (this.canvas) {
+                    this.canvas.dispose();
+                }
+                
+                console.log('画布管理器已销毁');
+            }
+        }
+        
+        console.log('CanvasManager类已加载');
+        
+        // ==================== 应用程序初始化 ====================
+        
+        /**
+         * 应用程序主类
+         */
+        class Application {
+            constructor() {
+                this.appState = null;
+                this.canvasManager = null;
+                this.propertyPanel = null;
+                this.previewManager = null;
+                
+                // 初始化应用
+                this.init();
+            }
+            
+            /**
+             * 初始化应用程序
+             */
+            init() {
+                // 等待DOM加载完成
+                if (document.readyState === 'loading') {
+                    document.addEventListener('DOMContentLoaded', () => {
+                        this.initializeApp();
+                    });
+                } else {
+                    this.initializeApp();
+                }
+            }
+            
+            /**
+             * 初始化应用程序
+             */
+            initializeApp() {
+                try {
+                    // 初始化状态管理
+                    this.appState = new AppState();
+                    
+                    // 初始化画布管理器
+                    const canvasElement = document.getElementById('fabricCanvas');
+                    this.canvasManager = new CanvasManager(canvasElement, this.appState);
+                    
+                    // 设置全局引用
+                    window.app = this;
+                    window.canvasManager = this.canvasManager;
+                    
+                    // 初始化UI事件
+                    this.initializeUIEvents();
+                    
+                    // 初始化应用状态监听
+                    this.initializeAppStateListeners();
+                    
+                    console.log('应用程序初始化完成');
+                } catch (error) {
+                    console.error('应用程序初始化失败:', error);
+                }
+            }
+            
+            /**
+             * 初始化UI事件
+             */
+            initializeUIEvents() {
+                // 背景图上传
+                this.initBackgroundUpload();
+                
+                // 保存配置
+                this.initSaveConfig();
+                
+                // 预览控制
+                this.initPreviewControls();
+                
+                // 配置导出弹窗
+                this.initConfigModal();
+                
+                console.log('UI事件已初始化');
+            }
+            
+            /**
+             * 初始化背景图上传
+             */
+            initBackgroundUpload() {
+                const uploadBtn = document.getElementById('uploadBtn');
+                const uploadInput = document.getElementById('backgroundUpload');
+                
+                // 点击上传按钮
+                uploadBtn.addEventListener('click', () => {
+                    uploadInput.click();
+                });
+                
+                // 文件选择
+                uploadInput.addEventListener('change', async (e) => {
+                    const file = e.target.files[0];
+                    if (!file) return;
+                    
+                    try {
+                        // 显示加载状态
+                        uploadBtn.disabled = true;
+                        uploadBtn.innerHTML = '<span class="loading"></span> 上传中...';
+                        
+                        // 验证文件
+                        if (!FileUtils.validateImageFile(file)) {
+                            throw new Error('请选择有效的图片文件（JPG、PNG、GIF、WebP）');
+                        }
+                        
+                        if (!FileUtils.validateFileSize(file)) {
+                            throw new Error('文件大小不能超过10MB');
+                        }
+                        
+                        // 转换为base64
+                        const base64Data = await FileUtils.fileToBase64(file);
+                        
+                        // 获取图片尺寸
+                        const dimensions = await this.getImageDimensions(base64Data);
+                        
+                        // 设置背景图片
+                        console.log('📸 开始设置Canvas背景图片...');
+                        this.canvasManager.updateBackgroundImage(base64Data, dimensions);
+                        
+                        // 更新预览背景
+                        this.updatePreviewBackground(base64Data);
+                        
+                        console.log(`✅ 背景图片上传完成: ${dimensions.width}x${dimensions.height}`);
+                        
+                    } catch (error) {
+                        console.error('背景图上传失败:', error);
+                        alert(error.message || '背景图上传失败');
+                    } finally {
+                        // 恢复按钮状态
+                        uploadBtn.disabled = false;
+                        uploadBtn.innerHTML = '上传背景图';
+                        
+                        // 清空input
+                        uploadInput.value = '';
+                    }
+                });
+            }
+            
+            /**
+             * 获取图片尺寸
+             */
+            getImageDimensions(imageSrc) {
+                return new Promise((resolve, reject) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        resolve({
+                            width: img.naturalWidth,
+                            height: img.naturalHeight
+                        });
+                    };
+                    img.onerror = reject;
+                    img.src = imageSrc;
+                });
+            }
+            
+            /**
+             * 更新预览背景
+             */
+            updatePreviewBackground(imageData) {
+                const previewBackground = document.getElementById('previewBackground');
+                if (previewBackground) {
+                    previewBackground.style.backgroundImage = `url(${imageData})`;
+                    previewBackground.style.backgroundSize = 'cover';
+                    previewBackground.style.backgroundPosition = 'center';
+                    previewBackground.innerHTML = '';
+                }
+            }
+            
+            /**
+             * 初始化保存配置
+             */
+            initSaveConfig() {
+                const saveBtn = document.getElementById('saveConfigBtn');
+                
+                saveBtn.addEventListener('click', () => {
+                    try {
+                        // 验证当前状态
+                        const validation = this.appState.validate();
+                        if (!validation.valid) {
+                            alert('配置验证失败:\\n' + validation.errors.join('\\n'));
+                            return;
+                        }
+                        
+                        // 导出配置
+                        const config = this.appState.exportConfiguration();
+                        
+                        // 格式化JSON
+                        const configJson = JSON.stringify(config, null, 2);
+                        
+                        // 显示配置弹窗
+                        this.showConfigModal(configJson);
+                        
+                    } catch (error) {
+                        console.error('保存配置失败:', error);
+                        alert('保存配置失败: ' + error.message);
+                    }
+                });
+            }
+            
+            /**
+             * 显示配置弹窗
+             */
+            showConfigModal(configJson) {
+                const modal = document.getElementById('configModal');
+                const output = document.getElementById('configOutput');
+                
+                output.value = configJson;
+                DOMUtils.toggleVisibility(modal, true);
+            }
+            
+            /**
+             * 初始化预览控制
+             */
+            initPreviewControls() {
+                const refreshBtn = document.getElementById('previewRefreshBtn');
+                const resetBtn = document.getElementById('previewResetBtn');
+                
+                refreshBtn.addEventListener('click', () => {
+                    this.refreshPreview();
+                });
+                
+                resetBtn.addEventListener('click', () => {
+                    this.resetPreview();
+                });
+            }
+            
+            /**
+             * 刷新预览
+             */
+            refreshPreview() {
+                // 触发预览更新
+                this.appState.emit('canvasUpdated');
+                console.log('预览已刷新');
+            }
+            
+            /**
+             * 重置预览
+             */
+            resetPreview() {
+                const previewModules = document.getElementById('previewModules');
+                DOMUtils.clearContainer(previewModules);
+                
+                // 重新渲染所有模块
+                this.renderAllModulesToPreview();
+                console.log('预览已重置');
+            }
+            
+            /**
+             * 渲染所有模块到预览
+             */
+            renderAllModulesToPreview() {
+                const previewModules = document.getElementById('previewModules');
+                const previewContainer = document.getElementById('previewContainer');
+                
+                // 清空现有模块
+                DOMUtils.clearContainer(previewModules);
+                
+                // 获取预览容器尺寸
+                const containerWidth = previewContainer.offsetWidth;
+                const containerHeight = previewContainer.offsetHeight;
+                
+                // 渲染每个模块
+                for (const module of this.appState.getAllModules()) {
+                    try {
+                        const moduleElement = module.renderPreview(
+                            previewModules,
+                            containerWidth,
+                            containerHeight
+                        );
+                        
+                        if (moduleElement) {
+                            previewModules.appendChild(moduleElement);
+                        }
+                    } catch (error) {
+                        console.error(`渲染模块失败 (${module.id}):`, error);
+                    }
+                }
+            }
+            
+            /**
+             * 初始化配置弹窗
+             */
+            initConfigModal() {
+                const modal = document.getElementById('configModal');
+                const closeBtn = document.getElementById('closeModalBtn');
+                const copyBtn = document.getElementById('copyConfigBtn');
+                const downloadBtn = document.getElementById('downloadConfigBtn');
+                const output = document.getElementById('configOutput');
+                
+                // 关闭弹窗
+                closeBtn.addEventListener('click', () => {
+                    DOMUtils.toggleVisibility(modal, false);
+                });
+                
+                // 点击背景关闭
+                modal.addEventListener('click', (e) => {
+                    if (e.target === modal) {
+                        DOMUtils.toggleVisibility(modal, false);
+                    }
+                });
+                
+                // 复制配置
+                copyBtn.addEventListener('click', async () => {
+                    try {
+                        await navigator.clipboard.writeText(output.value);
+                        copyBtn.textContent = '已复制';
+                        setTimeout(() => {
+                            copyBtn.textContent = '复制配置';
+                        }, 2000);
+                    } catch (error) {
+                        console.error('复制失败:', error);
+                        
+                        // 降级方案
+                        output.select();
+                        document.execCommand('copy');
+                        copyBtn.textContent = '已复制';
+                        setTimeout(() => {
+                            copyBtn.textContent = '复制配置';
+                        }, 2000);
+                    }
+                });
+                
+                // 下载配置
+                downloadBtn.addEventListener('click', () => {
+                    const blob = new Blob([output.value], { type: 'application/json' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `page-config-${new Date().toISOString().slice(0, 10)}.json`;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                });
+            }
+            
+            /**
+             * 初始化应用状态监听
+             */
+            initializeAppStateListeners() {
+                // 监听模块添加
+                this.appState.on('moduleAdded', (module) => {
+                    this.renderAllModulesToPreview();
+                });
+                
+                // 监听模块移除
+                this.appState.on('moduleRemoved', (moduleId) => {
+                    this.renderAllModulesToPreview();
+                });
+                
+                // 监听模块选择
+                this.appState.on('moduleSelected', (selectedModule, previousModule) => {
+                    this.updatePropertyPanel(selectedModule);
+                });
+                
+                // 监听模块更新
+                this.appState.on('moduleUpdated', (module) => {
+                    this.renderAllModulesToPreview();
+                });
+                
+                // 监听画布更新
+                this.appState.on('canvasUpdated', () => {
+                    this.renderAllModulesToPreview();
+                });
+                
+                // 监听模块修改
+                this.appState.on('moduleModified', (module) => {
+                    this.renderAllModulesToPreview();
+                });
+                
+                console.log('应用状态监听器已初始化');
+            }
+            
+            /**
+             * 更新属性面板
+             */
+            updatePropertyPanel(selectedModule) {
+                const propertyContent = document.getElementById('propertyContent');
+                
+                if (!selectedModule) {
+                    // 显示默认提示
+                    propertyContent.innerHTML = `
+                        <div class="alert alert-info">
+                            <p>请在左侧画布中拖拽创建或选择一个模块</p>
+                        </div>
+                    `;
+                    return;
+                }
+                
+                // 生成属性编辑界面
+                this.generatePropertyEditor(selectedModule, propertyContent);
+            }
+            
+            /**
+             * 生成属性编辑器
+             */
+            generatePropertyEditor(module, container) {
+                // 清空容器
+                DOMUtils.clearContainer(container);
+                
+                // 创建标题
+                const title = DOMUtils.createElement('div', 'flex items-center gap-2 mb-4 p-3 bg-gray-50 rounded-lg');
+                title.innerHTML = `
+                    <span class="text-lg">${module.getIcon()}</span>
+                    <div>
+                        <h3 class="font-semibold text-gray-900">${module.getDisplayName()}</h3>
+                        <p class="text-sm text-gray-600">ID: ${module.id}</p>
+                    </div>
+                `;
+                container.appendChild(title);
+                
+                // 创建表单
+                const form = DOMUtils.createElement('form', 'space-y-4');
+                
+                // 获取属性字段
+                const fields = module.getPropertyFields();
+                
+                // 生成字段
+                fields.forEach(field => {
+                    const fieldElement = this.createFormField(field, module);
+                    form.appendChild(fieldElement);
+                });
+                
+                // 如果是按钮模块，添加动态字段
+                if (module.type === 'BUTTON' && module.getDynamicFields) {
+                    const dynamicFields = module.getDynamicFields();
+                    dynamicFields.forEach(field => {
+                        const fieldElement = this.createFormField(field, module);
+                        form.appendChild(fieldElement);
+                    });
+                }
+                
+                container.appendChild(form);
+                
+                // 添加删除按钮
+                const deleteBtn = DOMUtils.createElement('button', 'btn-danger w-full mt-4');
+                deleteBtn.textContent = '删除此模块';
+                deleteBtn.addEventListener('click', () => {
+                    if (confirm('确定要删除此模块吗？')) {
+                        this.appState.removeModule(module.id);
+                    }
+                });
+                container.appendChild(deleteBtn);
+            }
+            
+            /**
+             * 创建表单字段
+             */
+            createFormField(field, module) {
+                const fieldGroup = DOMUtils.createElement('div', 'form-group');
+                
+                // 创建标签
+                const label = DOMUtils.createElement('label', 'form-label');
+                label.textContent = field.label;
+                if (field.required) label.textContent += ' *';
+                fieldGroup.appendChild(label);
+                
+                // 获取当前值
+                const currentValue = this.getNestedValue(module.properties, field.key);
+                
+                // 创建输入控件
+                let input;
+                switch (field.type) {
+                    case 'text':
+                    case 'url':
+                        input = DOMUtils.createElement('input', 'form-input');
+                        input.type = field.type;
+                        input.value = currentValue || '';
+                        input.placeholder = field.placeholder || '';
+                        break;
+                    case 'textarea':
+                        input = DOMUtils.createElement('textarea', 'form-input');
+                        input.value = currentValue || '';
+                        input.placeholder = field.placeholder || '';
+                        input.rows = 3;
+                        break;
+                    case 'number':
+                        input = DOMUtils.createElement('input', 'form-input');
+                        input.type = 'number';
+                        input.value = currentValue || 0;
+                        if (field.min !== undefined) input.min = field.min;
+                        if (field.max !== undefined) input.max = field.max;
+                        if (field.step !== undefined) input.step = field.step;
+                        break;
+                    case 'color':
+                        input = DOMUtils.createElement('input', 'form-input');
+                        input.type = 'color';
+                        input.value = currentValue || '#000000';
+                        break;
+                    case 'select':
+                        input = DOMUtils.createElement('select', 'form-select');
+                        field.options.forEach(option => {
+                            const optionElement = DOMUtils.createElement('option');
+                            optionElement.value = option.value;
+                            optionElement.textContent = option.label;
+                            if (currentValue === option.value) {
+                                optionElement.selected = true;
+                            }
+                            input.appendChild(optionElement);
+                        });
+                        break;
+                    case 'checkbox':
+                        input = DOMUtils.createElement('input', 'mr-2');
+                        input.type = 'checkbox';
+                        input.checked = currentValue || false;
+                        break;
+                    default:
+                        input = DOMUtils.createElement('input', 'form-input');
+                        input.type = 'text';
+                        input.value = currentValue || '';
+                        break;
+                }
+                
+                // 添加单位标签
+                if (field.unit) {
+                    const unitWrapper = DOMUtils.createElement('div', 'flex items-center gap-2');
+                    unitWrapper.appendChild(input);
+                    unitWrapper.appendChild(DOMUtils.createElement('span', 'text-sm text-gray-600', field.unit));
+                    fieldGroup.appendChild(unitWrapper);
+                } else {
+                    fieldGroup.appendChild(input);
+                }
+                
+                // 添加事件监听
+                input.addEventListener('input', (e) => {
+                    let value = e.target.value;
+                    
+                    // 类型转换
+                    if (field.type === 'number') {
+                        value = parseFloat(value) || 0;
+                    } else if (field.type === 'checkbox') {
+                        value = e.target.checked;
+                    }
+                    
+                    // 更新属性
+                    const updateData = {};
+                    this.setNestedValue(updateData, field.key, value);
+                    this.appState.updateModule(module.id, updateData);
+                });
+                
+                return fieldGroup;
+            }
+            
+            /**
+             * 获取嵌套值
+             */
+            getNestedValue(obj, path) {
+                return path.split('.').reduce((current, key) => {
+                    return current && current[key] !== undefined ? current[key] : undefined;
+                }, obj);
+            }
+            
+            /**
+             * 设置嵌套值
+             */
+            setNestedValue(obj, path, value) {
+                const keys = path.split('.');
+                const lastKey = keys.pop();
+                const target = keys.reduce((current, key) => {
+                    return current[key] = current[key] || {};
+                }, obj);
+                target[lastKey] = value;
+            }
+        }
+        
+        // 创建应用实例
+        const app = new Application();
+        
+        console.log('应用程序已启动');
+    </script>
+</body>
+</html> 
