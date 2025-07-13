@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Visual Page Builder</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js"></script>
+</head>
+<body class="bg-gray-100">
+    <div class="grid grid-cols-12 gap-4 p-4">
+        <!-- Left Column: Canvas -->
+        <div class="col-span-5 bg-white p-4 rounded-lg shadow">
+            <h2 class="text-lg font-bold mb-4">Management Backend (Canvas)</h2>
+            <button id="upload-bg-btn" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded mb-4">
+                Upload Background Image
+            </button>
+            <input type="file" id="bg-upload" class="hidden">
+            <div id="canvas-container" class="w-full border">
+                <canvas id="canvas"></canvas>
+            </div>
+        </div>
+
+        <!-- Middle Column: Properties Panel -->
+        <div class="col-span-3 bg-white p-4 rounded-lg shadow">
+            <h2 class="text-lg font-bold mb-4">Properties Panel</h2>
+            <div id="properties-panel">
+                <p>Please drag or select a module on the left.</p>
+            </div>
+        </div>
+
+        <!-- Right Column: Live Preview -->
+        <div class="col-span-4 bg-white p-4 rounded-lg shadow">
+            <h2 class="text-lg font-bold mb-4">H5 Live Preview</h2>
+            <div class="relative mx-auto border-gray-800 dark:border-gray-800 bg-gray-800 border-[14px] rounded-[2.5rem] h-[600px] w-[300px]">
+                <div class="h-[32px] w-[3px] bg-gray-800 dark:bg-gray-800 absolute -left-[17px] top-[72px] rounded-l-lg"></div>
+                <div class="h-[46px] w-[3px] bg-gray-800 dark:bg-gray-800 absolute -left-[17px] top-[124px] rounded-l-lg"></div>
+                <div class="h-[46px] w-[3px] bg-gray-800 dark:bg-gray-800 absolute -left-[17px] top-[178px] rounded-l-lg"></div>
+                <div class="h-[64px] w-[3px] bg-gray-800 dark:bg-gray-800 absolute -right-[17px] top-[142px] rounded-r-lg"></div>
+                <div class="rounded-[2rem] overflow-hidden w-full h-full bg-white">
+                    <div id="preview-container" class="w-full h-full bg-cover bg-no-repeat">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="p-4">
+        <button id="save-config-btn" class="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded">
+            Save Configuration
+        </button>
+        <pre id="json-output" class="bg-gray-200 p-4 mt-4 rounded"></pre>
+    </div>
+    <script>
+        const canvas = new fabric.Canvas('canvas', {
+            selection: true
+        });
+        const canvasContainer = document.getElementById('canvas-container');
+        const bgUploadBtn = document.getElementById('upload-bg-btn');
+        const bgUpload = document.getElementById('bg-upload');
+        const propertiesPanel = document.getElementById('properties-panel');
+        const previewContainer = document.getElementById('preview-container');
+        const saveConfigBtn = document.getElementById('save-config-btn');
+        const jsonOutput = document.getElementById('json-output');
+
+        let bgImage = null;
+
+        function resizeCanvas() {
+            if (!bgImage) return;
+            const containerWidth = canvasContainer.offsetWidth;
+            const scale = containerWidth / bgImage.width;
+            canvas.setDimensions({
+                width: containerWidth,
+                height: bgImage.height * scale
+            });
+            canvas.setBackgroundImage(bgImage, canvas.renderAll.bind(canvas), {
+                scaleX: scale,
+                scaleY: scale,
+            });
+            canvas.renderAll();
+            renderPreview();
+        }
+
+        bgUploadBtn.addEventListener('click', () => bgUpload.click());
+        bgUpload.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                previewContainer.style.backgroundImage = `url(${event.target.result})`;
+                fabric.Image.fromURL(event.target.result, (img) => {
+                    bgImage = img;
+                    resizeCanvas();
+                });
+            };
+            reader.readAsDataURL(file);
+        });
+
+        window.addEventListener('resize', resizeCanvas);
+
+        // --- Drawing Logic ---
+        let rect, isDrawing = false, origX, origY;
+
+        canvas.on('mouse:down', function(o) {
+            if (canvas.getActiveObject()) {
+                return; // Don't draw if an object is selected
+            }
+            isDrawing = true;
+            const pointer = canvas.getPointer(o.e);
+            origX = pointer.x;
+            origY = pointer.y;
+            rect = new fabric.Rect({
+                left: origX,
+                top: origY,
+                originX: 'left',
+                originY: 'top',
+                width: 0,
+                height: 0,
+                angle: 0,
+                fill: 'rgba(255,0,0,0.5)',
+                transparentCorners: false,
+                // Custom properties
+                moduleType: 'BUTTON',
+                actionType: 'JUMP_URL',
+                actionUrl: '',
+                actionText: '',
+                textContent: '默认文本',
+                fontSize: 16,
+                color: '#000000',
+                fontWeight: 'normal',
+                textAlign: 'left',
+                url: ''
+            });
+            canvas.add(rect);
+        });
+
+        canvas.on('mouse:move', function(o) {
+            if (!isDrawing) return;
+            const pointer = canvas.getPointer(o.e);
+            let width = Math.abs(origX - pointer.x);
+            let height = Math.abs(origY - pointer.y);
+
+            rect.set({ 
+                width: width, 
+                height: height,
+                left: origX > pointer.x ? pointer.x : origX,
+                top: origY > pointer.y ? pointer.y : origY
+            });
+            canvas.renderAll();
+        });
+
+        canvas.on('mouse:up', function() {
+            if (!isDrawing) return;
+            isDrawing = false;
+            if (rect.width < 5 && rect.height < 5) {
+                canvas.remove(rect);
+            } else {
+                canvas.setActiveObject(rect);
+            }
+            canvas.renderAll();
+        });
+
+        // --- Event Handlers ---
+        canvas.on({
+            'selection:created': (e) => updatePropertiesPanel(e.selected[0]),
+            'selection:updated': (e) => updatePropertiesPanel(e.selected[0]),
+            'selection:cleared': () => {
+                propertiesPanel.innerHTML = '<p>请在左侧图中拖拽或选择一个模块</p>';
+            },
+            'object:modified': () => renderPreview()
+        });
+
+        // --- Properties Panel ---
+        function updatePropertiesPanel(obj) {
+            propertiesPanel.innerHTML = ''; // Clear panel completely
+
+            // --- Delete Button ---
+            const deleteBtn = document.createElement('button');
+            deleteBtn.innerText = '删除此模块';
+            deleteBtn.className = 'w-full bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded mb-4';
+            deleteBtn.onclick = () => {
+                canvas.remove(obj);
+                propertiesPanel.innerHTML = '<p>请在左侧图中拖拽或选择一个模块</p>';
+                renderPreview();
+            };
+            propertiesPanel.appendChild(deleteBtn);
+
+            // --- Module Type ---
+            const typeSelect = document.createElement('select');
+            typeSelect.className = 'w-full p-2 border rounded mb-4';
+            const types = {
+                'BUTTON': '跳转按钮', 'VIDEO': '视频播放', 'GIF': '动态图', 'TEXT': '文本'
+            };
+            for (const [value, text] of Object.entries(types)) {
+                const option = document.createElement('option');
+                option.value = value;
+                option.innerText = text;
+                if (obj.moduleType === value) option.selected = true;
+                typeSelect.appendChild(option);
+            }
+            typeSelect.onchange = (e) => {
+                obj.moduleType = e.target.value;
+                updatePropertiesPanel(obj); // Re-render panel for new type
+            };
+            propertiesPanel.appendChild(createField('模块类型', typeSelect));
+
+            // --- Dynamic Properties based on Type ---
+            const type = obj.moduleType || 'BUTTON';
+
+            if (type === 'TEXT') {
+                propertiesPanel.appendChild(createTextField(obj, 'textContent', '文本内容'));
+                propertiesPanel.appendChild(createNumericField(obj, 'fontSize', '字号'));
+                propertiesPanel.appendChild(createColorField(obj, 'color', '文字颜色'));
+                propertiesPanel.appendChild(createSelectField(obj, 'fontWeight', '字重', ['normal', 'bold']));
+                propertiesPanel.appendChild(createSelectField(obj, 'textAlign', '对齐方式', ['left', 'center', 'right']));
+            } else if (type === 'BUTTON') {
+                const actionTypes = {
+                    'JUMP_URL': '跳转链接', 'OPEN_VIP_PAGE': '打开VIP页', 'SHOW_TOAST': '弹出提示'
+                };
+                const actionSelect = createSelectField(obj, 'actionType', '事件类型', actionTypes, true);
+                actionSelect.querySelector('select').onchange = (e) => {
+                    obj.actionType = e.target.value;
+                    updatePropertiesPanel(obj); // Re-render for new action
+                };
+                propertiesPanel.appendChild(actionSelect);
+                
+                if (obj.actionType === 'JUMP_URL') {
+                    propertiesPanel.appendChild(createTextField(obj, 'actionUrl', '跳转链接(URL)'));
+                } else if (obj.actionType === 'SHOW_TOAST') {
+                    propertiesPanel.appendChild(createTextField(obj, 'actionText', '提示文字'));
+                }
+            } else if (type === 'VIDEO' || type === 'GIF') {
+                propertiesPanel.appendChild(createTextField(obj, 'url', '资源地址(URL)'));
+            }
+            
+            renderPreview();
+        }
+
+        // --- Field Creation Helpers ---
+        function createField(label, input) {
+            const field = document.createElement('div');
+            field.className = 'mb-4';
+            const labelEl = document.createElement('label');
+            labelEl.innerText = label;
+            labelEl.className = 'block text-sm font-medium text-gray-700 mb-1';
+            field.appendChild(labelEl);
+            field.appendChild(input);
+            return field;
+        }
+
+        function createTextField(obj, prop, label) {
+            const input = document.createElement('textarea');
+            input.className = 'w-full p-2 border rounded';
+            input.value = obj[prop] || '';
+            input.oninput = (e) => {
+                obj[prop] = e.target.value;
+                renderPreview();
+            };
+            return createField(label, input);
+        }
+        
+        function createNumericField(obj, prop, label) {
+            const input = document.createElement('input');
+            input.type = 'number';
+            input.className = 'w-full p-2 border rounded';
+            input.value = obj[prop] || '';
+            input.oninput = (e) => {
+                obj[prop] = parseFloat(e.target.value) || 0;
+                renderPreview();
+            };
+            return createField(label, input);
+        }
+
+        function createColorField(obj, prop, label) {
+            const input = document.createElement('input');
+            input.type = 'color';
+            input.className = 'w-full h-10 p-1 border rounded';
+            input.value = obj[prop] || '#000000';
+            input.oninput = (e) => {
+                obj[prop] = e.target.value;
+                renderPreview();
+            };
+            return createField(label, input);
+        }
+
+        function createSelectField(obj, prop, label, options, isObject = false) {
+            const select = document.createElement('select');
+            select.className = 'w-full p-2 border rounded';
+            const source = isObject ? Object.entries(options) : options.map(o => [o, o]);
+
+            for (const [value, text] of source) {
+                const option = document.createElement('option');
+                option.value = value;
+                option.innerText = text;
+                if (obj[prop] === value) option.selected = true;
+                select.appendChild(option);
+            }
+            select.onchange = (e) => {
+                obj[prop] = e.target.value;
+                renderPreview();
+            };
+            return createField(label, select);
+        }
+
+        // --- Preview & Save ---
+        function renderPreview() {
+            if (!bgImage) return;
+            previewContainer.innerHTML = ''; // Clear preview
+
+            const scale = canvas.width / bgImage.width;
+
+            canvas.getObjects().forEach(obj => {
+                const left = (obj.left / scale / bgImage.width) * 100;
+                const top = (obj.top / scale / bgImage.height) * 100;
+                const width = (obj.getScaledWidth() / scale / bgImage.width) * 100;
+                const height = (obj.getScaledHeight() / scale / bgImage.height) * 100;
+
+                const el = document.createElement('div');
+                el.style.position = 'absolute';
+                el.style.left = `${left}%`;
+                el.style.top = `${top}%`;
+                el.style.width = `${width}%`;
+                el.style.height = `${height}%`;
+                el.style.boxSizing = 'border-box';
+
+                const type = obj.moduleType || 'BUTTON';
+
+                if (type === 'TEXT') {
+                    el.innerText = obj.textContent || '';
+                    el.style.fontSize = `${obj.fontSize}px`;
+                    el.style.color = obj.color || '#000000';
+                    el.style.fontWeight = obj.fontWeight || 'normal';
+                    el.style.textAlign = obj.textAlign || 'left';
+                    el.style.whiteSpace = 'pre-wrap';
+                    el.style.overflow = 'hidden';
+                } else if (type === 'BUTTON') {
+                    el.style.cursor = 'pointer';
+                    el.onclick = () => {
+                        const actionType = obj.actionType || 'JUMP_URL';
+                        if (actionType === 'JUMP_URL') {
+                            alert(`模拟跳转: ${obj.actionUrl}`);
+                        } else if (actionType === 'OPEN_VIP_PAGE') {
+                            alert('模拟打开VIP页面');
+                        } else if (actionType === 'SHOW_TOAST') {
+                            alert(`模拟提示: ${obj.actionText}`);
+                        }
+                    };
+                } else if (type === 'VIDEO') {
+                    const video = document.createElement('video');
+                    video.src = obj.url;
+                    video.controls = true;
+                    video.style.width = '100%';
+                    video.style.height = '100%';
+                    el.appendChild(video);
+                } else if (type === 'GIF') {
+                    const img = document.createElement('img');
+                    img.src = obj.url;
+                    img.style.width = '100%';
+                    img.style.height = '100%';
+                    el.appendChild(img);
+                }
+                previewContainer.appendChild(el);
+            });
+        }
+
+        saveConfigBtn.addEventListener('click', () => {
+            if (!bgImage) {
+                alert("请先上传背景图片！");
+                return;
+            }
+            const config = {
+                backgroundImageUrl: bgImage.getSrc(),
+                modules: canvas.getObjects().map(obj => {
+                    const scale = canvas.width / bgImage.width;
+                    const left = (obj.left / scale / bgImage.width) * 100;
+                    const top = (obj.top / scale / bgImage.height) * 100;
+                    const width = (obj.getScaledWidth() / scale / bgImage.width) * 100;
+                    const height = (obj.getScaledHeight() / scale / bgImage.height) * 100;
+
+                    const module = {
+                        type: obj.moduleType || 'BUTTON',
+                        rect: {
+                            left: `${left.toFixed(1)}%`,
+                            top: `${top.toFixed(1)}%`,
+                            width: `${width.toFixed(1)}%`,
+                            height: `${height.toFixed(1)}%`,
+                        }
+                    };
+
+                    if (module.type === 'TEXT') {
+                        module.data = {
+                            textContent: obj.textContent || '',
+                            fontSize: obj.fontSize || 16,
+                            color: obj.color || '#000000',
+                            fontWeight: obj.fontWeight || 'normal',
+                            textAlign: obj.textAlign || 'left',
+                        };
+                    } else if (module.type === 'BUTTON') {
+                        module.action = {
+                            type: obj.actionType || 'JUMP_URL',
+                            data: {}
+                        };
+                        if (module.action.type === 'JUMP_URL') {
+                            module.action.data.url = obj.actionUrl || '';
+                        } else if (module.action.type === 'SHOW_TOAST') {
+                            module.action.data.text = obj.actionText || '';
+                        }
+                    } else if (module.type === 'VIDEO' || module.type === 'GIF') {
+                        module.data = {
+                            url: obj.url || '',
+                        };
+                    }
+                    return module;
+                })
+            };
+
+            jsonOutput.textContent = JSON.stringify(config, null, 2);
+        });
+    </script>
+</body>
+</html>
