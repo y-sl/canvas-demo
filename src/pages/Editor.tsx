@@ -3,18 +3,22 @@ import { Link } from 'react-router-dom';
 import { HotspotCanvas } from '../components/HotspotCanvas';
 import { PropertyPanel } from '../components/PropertyPanel';
 import { HotspotList } from '../components/HotspotList';
+import { ComponentLibrary } from '../components/ComponentLibrary';
 import { Toolbar } from '../components/Toolbar';
 import { useHotspotStore } from '../stores/hotspotStore';
+import { useComponentStore } from '../stores/componentStore';
 import { Toaster } from 'sonner';
 import { Globe } from 'lucide-react';
 
 export const Editor: React.FC = () => {
   const { loadFromLocalStorage } = useHotspotStore();
+  const { loadFromLocalStorage: loadComponentsFromLocalStorage } = useComponentStore();
   
   // 页面加载时从本地存储恢复数据
   useEffect(() => {
     loadFromLocalStorage();
-  }, [loadFromLocalStorage]);
+    loadComponentsFromLocalStorage();
+  }, [loadFromLocalStorage, loadComponentsFromLocalStorage]);
   
   return (
     <div className="h-screen flex flex-col bg-gray-50">
@@ -37,15 +41,27 @@ export const Editor: React.FC = () => {
       
       {/* 主内容区 */}
       <div className="flex-1 flex overflow-hidden">
+        {/* 左侧组件库面板 - 超级明显的样式 */}
+        <div className="w-64 flex-shrink-0 bg-yellow-300 border-r-8 border-red-600" style={{minWidth: '256px'}}>
+          <div className="h-full bg-green-200">
+            <div className="p-4 bg-purple-400 text-white text-center font-bold text-xl">
+              组件库在这里！
+            </div>
+            <ComponentLibrary className="h-full" />
+          </div>
+        </div>
+        
         {/* 画布区域 */}
-        <div className="w-[750px] flex-shrink-0 p-4 overflow-y-auto">
-          <HotspotCanvas className="" />
+        <div className="flex-1 p-4 overflow-y-auto bg-gray-100">
+          <div className="max-w-[750px] mx-auto">
+            <HotspotCanvas className="" />
+          </div>
         </div>
         
         {/* 右侧面板区域 */}
-        <div className="flex-1 flex overflow-hidden">
+        <div className="w-96 flex-shrink-0 flex flex-col overflow-hidden">
           {/* 属性面板 */}
-          <div className="w-80 flex-shrink-0">
+          <div className="flex-1 border-b border-gray-200">
             <PropertyPanel className="h-full" />
           </div>
           

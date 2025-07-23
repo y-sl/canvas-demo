@@ -2,13 +2,16 @@ import React, { useRef, useEffect, useState, useCallback } from 'react';
 import * as fabric from 'fabric';
 import { useHotspotStore } from '../stores/hotspotStore';
 import { useMultiLanguageStore } from '../stores/multiLanguageStore';
+import { useComponentStore } from '../stores/componentStore';
 import { HotspotType } from '../types/hotspot';
+import { ComponentInstance } from '../types/component';
 
 interface HotspotCanvasProps {
   className?: string;
+  isMultiLanguage?: boolean;
 }
 
-export const HotspotCanvas: React.FC<HotspotCanvasProps> = ({ className }) => {
+export const HotspotCanvas: React.FC<HotspotCanvasProps> = ({ className, isMultiLanguage = false }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fabricCanvasRef = useRef<fabric.Canvas | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -26,31 +29,66 @@ export const HotspotCanvas: React.FC<HotspotCanvasProps> = ({ className }) => {
     drawingRectRef.current = drawingRect;
   }, [drawingRect]);
   
+  // 根据是否为多语言模式选择不同的store
+  const hotspotStore = useHotspotStore();
+  const multiLanguageStore = useMultiLanguageStore();
+  const componentStore = useComponentStore();
+  
   const {
     canvasScale,
     setCanvasScale,
-  } = useHotspotStore();
+  } = hotspotStore;
+  
+  // 组件相关状态
+  const {
+    components,
+    selectedComponentId,
+    addComponent,
+    updateComponent,
+    selectComponent,
+    deleteComponent,
+  } = componentStore;
+  
+  // 根据模式选择数据源
+  const storeData = isMultiLanguage ? {
+    selectedHotspotId: multiLanguageStore.selectedHotspotId,
+    addHotspot: multiLanguageStore.addHotspot,
+    updateHotspot: multiLanguageStore.updateHotspot,
+    selectHotspot: multiLanguageStore.selectHotspot,
+    deleteHotspot: multiLanguageStore.deleteHotspot,
+    hotspots: multiLanguageStore.getAllMultiLanguageHotspots(),
+    backgroundImageUrl: multiLanguageStore.currentProject?.backgroundImages[multiLanguageStore.languageState.currentLanguage]?.url,
+    backgroundImageSize: multiLanguageStore.currentProject?.backgroundImages[multiLanguageStore.languageState.currentLanguage]?.size,
+  } : {
+    selectedHotspotId: hotspotStore.selectedHotspotId,
+    addHotspot: hotspotStore.addHotspot,
+    updateHotspot: hotspotStore.updateHotspot,
+    selectHotspot: hotspotStore.selectHotspot,
+    deleteHotspot: hotspotStore.deleteHotspot,
+    hotspots: hotspotStore.hotspots,
+    backgroundImageUrl: hotspotStore.backgroundImageUrl,
+    backgroundImageSize: hotspotStore.backgroundImageSize,
+  };
   
   const {
-    currentProject,
-    languageState,
     selectedHotspotId,
     addHotspot,
     updateHotspot,
     selectHotspot,
     deleteHotspot,
-    getAllMultiLanguageHotspots,
-  } = useMultiLanguageStore();
+    hotspots,
+    backgroundImageUrl,
+    backgroundImageSize,
+  } = storeData;
   
-  // 获取多语言热区列表
-  const hotspots = getAllMultiLanguageHotspots();
-  
-  // 从多语言存储中获取当前语言的背景图片
-  const backgroundImageUrl = currentProject?.backgroundImages[languageState.currentLanguage]?.url;
-  const backgroundImageSize = currentProject?.backgroundImages[languageState.currentLanguage]?.size;
+  // 获取当前语言（仅在多语言模式下需要）
+  const currentLanguage = isMultiLanguage ? multiLanguageStore.languageState.currentLanguage : 'zh-CN';
 
+  // 获取当前项目数据
+  const currentProject = isMultiLanguage ? multiLanguageStore.currentProject : null;
+  
   console.log('=== HotspotCanvas Debug Start ===');
-  console.log('Current Language:', languageState.currentLanguage);
+  console.log('Current Language:', currentLanguage);
   console.log('Current Project exists:', !!currentProject);
   console.log('Background Images object:', currentProject?.backgroundImages);
   console.log('Background Image URL:', backgroundImageUrl);
@@ -68,10 +106,10 @@ export const HotspotCanvas: React.FC<HotspotCanvasProps> = ({ className }) => {
       backgroundImageSize,
       hotspotsCount: hotspots.length,
       currentProject: !!currentProject,
-      currentLanguage: languageState.currentLanguage,
+      currentLanguage: currentLanguage,
       availableLanguages: currentProject?.languages || []
     });
-  }, [backgroundImageUrl, backgroundImageSize, hotspots.length, currentProject, languageState.currentLanguage]);
+  }, [backgroundImageUrl, backgroundImageSize, hotspots.length, currentProject, currentLanguage]);
 
 
 
@@ -94,6 +132,21 @@ export const HotspotCanvas: React.FC<HotspotCanvasProps> = ({ className }) => {
       },
     });
   }, [updateHotspot]);
+  
+  // 更新组件位置和大小
+  const updateComponentPosition = useCallback((componentId: string, obj: fabric.Object) => {
+    if (!fabricCanvasRef.current) return;
+
+    const left = obj.left || 0;
+    const top = obj.top || 0;
+    const width = (obj.width! * (obj.scaleX || 1));
+    const height = (obj.height! * (obj.scaleY || 1));
+
+    updateComponent(componentId, {
+      position: { x: left, y: top },
+      size: { width, height },
+    });
+  }, [updateComponent]);
 
   // 鼠标按下事件
   const handleMouseDown = useCallback((e: fabric.TEvent) => {
@@ -105,7 +158,18 @@ export const HotspotCanvas: React.FC<HotspotCanvasProps> = ({ className }) => {
     }
     
     // 获取画布元素的边界矩形
-    const canvasElement = fabricCanvasRef.current.getElement();
+    let canvasElement;
+    try {
+      canvasElement = fabricCanvasRef.current.getElement();
+    } catch (error) {
+      console.log('Error getting canvas element:', error);
+      return;
+    }
+    
+    if (!canvasElement) {
+      console.log('Canvas element not available, skipping mouse down');
+      return;
+    }
     const rect = canvasElement.getBoundingClientRect();
     
     console.log('Canvas rect:', rect);
@@ -125,10 +189,30 @@ export const HotspotCanvas: React.FC<HotspotCanvasProps> = ({ className }) => {
     const target = fabricCanvasRef.current.findTarget(e.e, false);
     console.log('Target found:', target?.name || 'none');
     
-    if (target && target.name !== 'background') {
-      console.log('Clicked on object, not drawing');
+    // 如果点击的是组件，选中组件而不是热区
+    if (target && target.name && target.name.startsWith('component-')) {
+      const componentId = (target as any).componentId;
+      if (componentId) {
+        selectComponent(componentId);
+        console.log('Selected component:', componentId);
+      }
       return;
     }
+    
+    // 如果点击的是热区，按原有逻辑处理
+    if (target && target.name && target.name.startsWith('hotspot-')) {
+      console.log('Clicked on hotspot, not drawing');
+      return;
+    }
+    
+    // 如果点击的是背景图片，不绘制热区
+    if (target && target.name === 'background') {
+      console.log('Clicked on background, not drawing');
+      return;
+    }
+    
+    // 清除组件选择
+    selectComponent(null);
     
     setIsDrawing(true);
     console.log('Starting to draw hotspot at:', pointer);
@@ -150,7 +234,7 @@ export const HotspotCanvas: React.FC<HotspotCanvasProps> = ({ className }) => {
     fabricCanvasRef.current.add(drawRect);
     setDrawingRect(drawRect);
     console.log('Drawing rect created and added');
-  }, []);
+  }, [selectComponent]);
   
   // 鼠标移动事件
   const handleMouseMove = useCallback((e: fabric.TEvent) => {
@@ -165,7 +249,18 @@ export const HotspotCanvas: React.FC<HotspotCanvasProps> = ({ className }) => {
     }
 
     // 获取画布元素的边界矩形
-    const canvasElement = fabricCanvasRef.current.getElement();
+    let canvasElement;
+    try {
+      canvasElement = fabricCanvasRef.current.getElement();
+    } catch (error) {
+      console.log('Error getting canvas element:', error);
+      return;
+    }
+    
+    if (!canvasElement) {
+      console.log('Canvas element not available, skipping mouse move');
+      return;
+    }
     const rect = canvasElement.getBoundingClientRect();
     
     // 计算相对于画布的坐标，考虑滚动偏移
@@ -233,7 +328,7 @@ export const HotspotCanvas: React.FC<HotspotCanvasProps> = ({ className }) => {
         height: `${height.toFixed(2)}%`,
       },
       name: {
-        [languageState.currentLanguage]: '新热区'
+        [currentLanguage]: '新热区'
       },
       action: {
         type: 'NONE',
@@ -307,6 +402,8 @@ export const HotspotCanvas: React.FC<HotspotCanvasProps> = ({ className }) => {
       const obj = e.target;
       if (obj && 'hotspotId' in obj) {
         updateHotspotPosition((obj as { hotspotId: string }).hotspotId, obj);
+      } else if (obj && 'componentId' in obj) {
+        updateComponentPosition((obj as { componentId: string }).componentId, obj);
       }
     });
     
@@ -340,23 +437,34 @@ export const HotspotCanvas: React.FC<HotspotCanvasProps> = ({ className }) => {
       document.removeEventListener('mousemove', handleGlobalMouseMove);
       document.removeEventListener('mouseup', handleGlobalMouseUp);
     };
-  }, [selectHotspot, updateHotspotPosition]);
+  }, [selectHotspot, updateHotspotPosition, updateComponentPosition]);
   
   // 处理画布尺寸调整
   const resizeCanvas = useCallback(() => {
     if (!fabricCanvasRef.current || !containerRef.current) return;
+    
+    const canvas = fabricCanvasRef.current;
     
     if (!backgroundImageSize) {
       // 默认尺寸，固定750px宽度
       const defaultWidth = 750;
       const defaultHeight = 600;
       
-      fabricCanvasRef.current.setDimensions({
-        width: defaultWidth,
-        height: defaultHeight,
-      });
-      setCanvasScale(1);
-      fabricCanvasRef.current.renderAll();
+      try {
+        // 检查canvas的内部属性是否已经初始化
+        if (!canvas.lowerCanvasEl || !canvas.upperCanvasEl) {
+          console.error('Canvas DOM elements not ready in resizeCanvas');
+          return;
+        }
+        
+        // 使用更安全的方式设置尺寸
+        canvas.setWidth(defaultWidth);
+        canvas.setHeight(defaultHeight);
+        setCanvasScale(1);
+        canvas.renderAll();
+      } catch (error) {
+        console.error('Error in resizeCanvas:', error);
+      }
     }
   }, [backgroundImageSize, setCanvasScale]);
   
@@ -395,91 +503,108 @@ export const HotspotCanvas: React.FC<HotspotCanvasProps> = ({ className }) => {
         console.log('Background image loaded successfully');
         console.log('Image dimensions:', img.width, 'x', img.height);
         
-        // 确保canvas完全初始化
-        if (!canvas) {
-          console.error('Canvas object is undefined, skipping background image setup');
-          return;
-        }
-        
-        try {
-          // 检查canvas是否有getElement方法
-          if (typeof canvas.getElement !== 'function') {
-            console.error('Canvas getElement method not available, skipping background image setup');
+        // 使用重试机制等待canvas完全初始化
+        const setupBackgroundImage = (retryCount = 0) => {
+          const maxRetries = 10;
+          
+          // 确保canvas完全初始化
+          if (!canvas) {
+            console.error('Canvas object is undefined, skipping background image setup');
             return;
           }
           
-          // 安全调用getElement方法
-          const canvasElement = canvas.getElement();
-          if (!canvasElement) {
-            console.error('Canvas element not available, skipping background image setup');
-            return;
+          try {
+            // 检查canvas的基本方法是否存在
+            if (typeof canvas.setWidth !== 'function' || typeof canvas.add !== 'function') {
+              if (retryCount < maxRetries) {
+                console.log(`Canvas methods not ready, retrying... (${retryCount + 1}/${maxRetries})`);
+                setTimeout(() => setupBackgroundImage(retryCount + 1), 50);
+                return;
+              } else {
+                console.error('Canvas methods not available after retries, skipping background image setup');
+                return;
+              }
+            }
+            
+            // 检查canvas的内部属性是否已经初始化
+            if (!canvas.lowerCanvasEl || !canvas.upperCanvasEl) {
+              if (retryCount < maxRetries) {
+                console.log(`Canvas DOM elements not ready, retrying... (${retryCount + 1}/${maxRetries})`);
+                setTimeout(() => setupBackgroundImage(retryCount + 1), 50);
+                return;
+              } else {
+                console.log('Canvas DOM elements not ready after retries, proceeding anyway');
+              }
+            }
+          } catch (error) {
+            if (retryCount < maxRetries) {
+              console.log(`Error checking canvas initialization, retrying... (${retryCount + 1}/${maxRetries}):`, error);
+              setTimeout(() => setupBackgroundImage(retryCount + 1), 50);
+              return;
+            } else {
+              console.error('Error checking canvas initialization after retries:', error);
+              return;
+            }
           }
           
-          // 检查lowerCanvasEl属性
-          if (!canvas.lowerCanvasEl) {
-            console.error('Canvas lowerCanvasEl not available, skipping background image setup');
+          // 先设置画布尺寸
+          const aspectRatio = img.height / img.width;
+          // 固定画布宽度为750px
+          const canvasWidth = 750;
+          const canvasHeight = canvasWidth * aspectRatio;
+          
+          // 保持原始比例，不限制高度，让容器滚动
+          const finalWidth = canvasWidth; // 始终保持750px宽度
+          const finalHeight = canvasHeight; // 保持原始比例的高度
+          
+          console.log('Setting canvas dimensions:', finalWidth, 'x', finalHeight);
+          
+          try {
+            // 使用更安全的方式设置尺寸
+            canvas.setWidth(finalWidth);
+            canvas.setHeight(finalHeight);
+          } catch (error) {
+            console.error('Error setting canvas dimensions:', error);
             return;
           }
-        } catch (error) {
-          console.error('Error checking canvas initialization:', error);
-          return;
-        }
         
-        // 先设置画布尺寸
-        const aspectRatio = img.height / img.width;
-        // 固定画布宽度为750px
-        const canvasWidth = 750;
-        const canvasHeight = canvasWidth * aspectRatio;
-        
-        // 保持原始比例，不限制高度，让容器滚动
-        const finalWidth = canvasWidth; // 始终保持750px宽度
-        const finalHeight = canvasHeight; // 保持原始比例的高度
-        
-        console.log('Setting canvas dimensions:', finalWidth, 'x', finalHeight);
-        
-        try {
-          canvas.setDimensions({
-            width: finalWidth,
-            height: finalHeight,
-          });
-        } catch (error) {
-          console.error('Error setting canvas dimensions:', error);
-          return;
-        }
-        
-        // 移除之前的背景图片
-        const existingBg = canvas.getObjects().find(obj => obj.name === 'background');
-        if (existingBg) {
-          console.log('Removing existing background image');
-          canvas.remove(existingBg);
-        }
-        
-        // 创建 Fabric 图片对象
-        const fabricImg = new fabric.Image(img, {
-          name: 'background',
-          selectable: false,
-          evented: false,
-          left: 0,
-          top: 0,
-          scaleX: finalWidth / img.width,
-          scaleY: finalHeight / img.height,
-        });
-        
-        console.log('Adding fabric image to canvas');
-        canvas.add(fabricImg);
-        canvas.sendObjectToBack(fabricImg);
-        canvas.renderAll();
-        console.log('Background image rendered to canvas');
-        
-        // 更新缩放比例
-        setCanvasScale(finalWidth / img.width);
-        console.log('Canvas scale updated:', finalWidth / img.width);
-        
-        // 强制重新渲染
-        setTimeout(() => {
-          canvas.renderAll();
-          console.log('Canvas force re-rendered');
-        }, 100);
+           // 移除之前的背景图片
+           const existingBg = canvas.getObjects().find(obj => obj.name === 'background');
+           if (existingBg) {
+             console.log('Removing existing background image');
+             canvas.remove(existingBg);
+           }
+           
+           // 创建 Fabric 图片对象
+           const fabricImg = new fabric.Image(img, {
+             name: 'background',
+             selectable: false,
+             evented: false,
+             left: 0,
+             top: 0,
+             scaleX: finalWidth / img.width,
+             scaleY: finalHeight / img.height,
+           });
+           
+           console.log('Adding fabric image to canvas');
+           canvas.add(fabricImg);
+           canvas.sendObjectToBack(fabricImg);
+           canvas.renderAll();
+           console.log('Background image rendered to canvas');
+           
+           // 更新缩放比例
+           setCanvasScale(finalWidth / img.width);
+           console.log('Canvas scale updated:', finalWidth / img.width);
+           
+           // 强制重新渲染
+           setTimeout(() => {
+             canvas.renderAll();
+             console.log('Canvas force re-rendered');
+           }, 100);
+         };
+         
+         // 开始设置背景图片
+         setupBackgroundImage();
       };
       
       img.onerror = (error) => {
@@ -512,7 +637,7 @@ export const HotspotCanvas: React.FC<HotspotCanvasProps> = ({ className }) => {
     const selectedHotspotId = activeObject && 'hotspotId' in activeObject ? 
       (activeObject as { hotspotId: string }).hotspotId : null;
     
-    // 清除现有的热区对象（保留背景图片）
+    // 清除现有的热区对象（保留背景图片和组件）
     const objects = canvas.getObjects();
     objects.forEach(obj => {
       if (obj.name && obj.name.startsWith('hotspot-')) {
@@ -541,10 +666,55 @@ export const HotspotCanvas: React.FC<HotspotCanvasProps> = ({ className }) => {
       canvas.renderAll();
     }
   }, [hotspots, canvasScale]);
+  
+  // 同步组件到画布
+  const syncComponentsToCanvas = useCallback(() => {
+    if (!fabricCanvasRef.current) return;
+    
+    const canvas = fabricCanvasRef.current;
+    
+    // 保存当前选中的组件ID
+    const activeObject = canvas.getActiveObject();
+    const selectedCompId = activeObject && 'componentId' in activeObject ? 
+      (activeObject as { componentId: string }).componentId : null;
+    
+    // 清除现有的组件对象（保留背景图片和热区）
+    const objects = canvas.getObjects();
+    objects.forEach(obj => {
+      if (obj.name && obj.name.startsWith('component-')) {
+        canvas.remove(obj);
+      }
+    });
+    
+    // 添加新的组件
+    let objectToSelect: fabric.Object | null = null;
+    components.forEach(component => {
+      const fabricObj = createComponentObject(component);
+      if (fabricObj) {
+        canvas.add(fabricObj);
+        // 如果这个组件之前被选中，记录它以便重新选中
+        if (selectedCompId === component.id) {
+          objectToSelect = fabricObj;
+        }
+      }
+    });
+    
+    canvas.renderAll();
+    
+    // 恢复选中状态
+    if (objectToSelect) {
+      canvas.setActiveObject(objectToSelect);
+      canvas.renderAll();
+    }
+  }, [components]);
 
   useEffect(() => {
     syncHotspotsToCanvas();
   }, [syncHotspotsToCanvas]);
+  
+  useEffect(() => {
+    syncComponentsToCanvas();
+  }, [syncComponentsToCanvas]);
 
   // 监听选中热区ID变化，同步画布选中状态
   useEffect(() => {
@@ -568,6 +738,29 @@ export const HotspotCanvas: React.FC<HotspotCanvasProps> = ({ className }) => {
       canvas.renderAll();
     }
   }, [selectedHotspotId]);
+  
+  // 监听选中组件ID变化，同步画布选中状态
+  useEffect(() => {
+    if (!fabricCanvasRef.current) return;
+    
+    const canvas = fabricCanvasRef.current;
+    
+    if (selectedComponentId) {
+      // 查找对应的画布对象
+      const targetObject = canvas.getObjects().find(obj => 
+        'componentId' in obj && (obj as { componentId: string }).componentId === selectedComponentId
+      );
+      
+      if (targetObject) {
+        canvas.setActiveObject(targetObject);
+        canvas.renderAll();
+      }
+    } else {
+      // 清除选中状态
+      canvas.discardActiveObject();
+      canvas.renderAll();
+    }
+  }, [selectedComponentId]);
 
   // 键盘事件监听
   useEffect(() => {
@@ -580,11 +773,13 @@ export const HotspotCanvas: React.FC<HotspotCanvasProps> = ({ className }) => {
         return;
       }
 
-      // Del键删除选中的热区
+      // Del键删除选中的热区或组件
       if (e.key === 'Delete' || e.key === 'Backspace') {
         e.preventDefault();
         if (selectedHotspotId) {
           deleteHotspot(selectedHotspotId);
+        } else if (selectedComponentId) {
+          deleteComponent(selectedComponentId);
         }
         return;
       }
@@ -605,7 +800,7 @@ export const HotspotCanvas: React.FC<HotspotCanvasProps> = ({ className }) => {
         e.preventDefault();
         if (copiedHotspot) {
           // 创建新的热区，稍微偏移位置
-          const currentLang = languageState.currentLanguage;
+          const currentLang = currentLanguage;
           const originalName = copiedHotspot.name?.[currentLang] || '热区';
           
           const newHotspot = {
@@ -639,7 +834,7 @@ export const HotspotCanvas: React.FC<HotspotCanvasProps> = ({ className }) => {
     return () => {
        document.removeEventListener('keydown', handleKeyDown);
      };
-   }, [selectedHotspotId, deleteHotspot, hotspots, addHotspot, languageState.currentLanguage]);
+   }, [selectedHotspotId, selectedComponentId, deleteHotspot, deleteComponent, hotspots, addHotspot, currentLanguage]);
   
   // 创建热区矩形对象
   const createHotspotRect = (hotspot: any) => {
@@ -671,6 +866,61 @@ export const HotspotCanvas: React.FC<HotspotCanvasProps> = ({ className }) => {
     
     return rect;
   };
+  
+  // 创建组件对象
+  const createComponentObject = useCallback((component: ComponentInstance) => {
+    const canvas = fabricCanvasRef.current;
+    if (!canvas) return null;
+    
+    switch (component.type) {
+      case 'button': {
+        const button = new fabric.Rect({
+          left: 0,
+          top: 0,
+          width: component.size.width,
+          height: component.size.height,
+          fill: component.style.backgroundColor || '#3B82F6',
+          stroke: component.style.border || 'none',
+          strokeWidth: 1,
+          rx: parseInt(component.style.borderRadius) || 6,
+          ry: parseInt(component.style.borderRadius) || 6,
+          selectable: true,
+          evented: true,
+          name: `component-${component.id}`,
+          componentId: component.id,
+        });
+        
+        // 添加按钮文字
+        const text = new fabric.Text(component.props.text || '按钮', {
+          left: component.size.width / 2,
+          top: component.size.height / 2,
+          fontSize: component.style.fontSize || 14,
+          fill: component.style.color || '#FFFFFF',
+          textAlign: 'center',
+          originX: 'center',
+          originY: 'center',
+          selectable: false,
+          evented: false,
+          name: `component-text-${component.id}`,
+        });
+        
+        // 创建组合对象
+        const group = new fabric.Group([button, text], {
+          left: component.position.x,
+          top: component.position.y,
+          selectable: true,
+          evented: true,
+          name: `component-${component.id}`,
+          componentId: component.id,
+        });
+        
+        return group;
+      }
+      
+      default:
+        return null;
+    }
+  }, []);
   
 
   

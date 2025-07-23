@@ -242,7 +242,7 @@ export const MultiLanguageEditor: React.FC = () => {
             onDragLeave={handleDragLeave}
           >
             {currentProject.backgroundImages[languageState.currentLanguage] ? (
-              <HotspotCanvas />
+              <HotspotCanvas isMultiLanguage={true} />
             ) : (
               <div className="flex items-center justify-center h-full text-gray-500">
                 <div className="text-center">
@@ -266,9 +266,9 @@ export const MultiLanguageEditor: React.FC = () => {
         </div>
         
         {/* 右侧属性面板 */}
-        {showPropertyPanel && selectedHotspotId && (
+        {showPropertyPanel && (
           <div className="w-80 border-l border-gray-200 bg-white overflow-hidden">
-            <PropertyPanel />
+            <PropertyPanel isMultiLanguage={true} />
           </div>
         )}
       </div>
